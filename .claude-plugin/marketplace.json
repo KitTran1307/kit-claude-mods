@@ -1,0 +1,39 @@
+{
+  "name": "kit-claude-mods",
+  "owner": {
+    "name": "Kit Tran",
+    "url": "https://github.com/KitTran1307"
+  },
+  "metadata": {
+    "description": "Small Claude Code mods: a cloud-session band, a status bar for the desktop app, and a to-do band with your project's memories."
+  },
+  "plugins": [
+    {
+      "name": "kit-cloud-pilot",
+      "source": {
+        "source": "github",
+        "repo": "KitTran1307/kit-cloud-pilot"
+      },
+      "description": "Let Claude Code (CLI) run work in cloud sessions by itself: start them, track them on GitHub, wait for what they need and answer their questions with a signed reply.",
+      "category": "productivity"
+    },
+    {
+      "name": "kit-cloud",
+      "source": "./plugins/kit-cloud",
+      "description": "Your Claude Code cloud sessions above the prompt: working, asking, PR open, CI failed or silent, with links. Needs kit-cloud-pilot (installed with it).",
+      "category": "productivity"
+    },
+    {
+      "name": "kit-statusbar",
+      "source": "./plugins/kit-statusbar",
+      "description": "A status bar for Claude Code in the desktop app and the CLI: repo, model, effort, context, account, session title, 5-hour and weekly limits.",
+      "category": "productivity"
+    },
+    {
+      "name": "kit-todos",
+      "source": "./plugins/kit-todos",
+      "description": "Your project's open to-dos above the prompt, most urgent first, with Do it now / Draft buttons and the project's newest memories.",
+      "category": "productivity"
+    }
+  ]
+}

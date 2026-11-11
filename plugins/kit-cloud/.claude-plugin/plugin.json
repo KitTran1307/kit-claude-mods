@@ -1,0 +1,60 @@
+{
+  "name": "kit-cloud",
+  "version": "2.1.0",
+  "description": "See your Claude Code cloud sessions above the prompt: working, asking, PR open, CI failed or silent, with a link to each. The band for kit-cloud-pilot, which tracks them.",
+  "author": {
+    "name": "Kit Tran",
+    "url": "https://github.com/KitTran1307"
+  },
+  "homepage": "https://github.com/KitTran1307/kit-claude-mods/tree/main/plugins/kit-cloud",
+  "repository": "https://github.com/KitTran1307/kit-claude-mods",
+  "license": "MIT",
+  "keywords": [
+    "cloud",
+    "sessions",
+    "github",
+    "status",
+    "band"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "scope": {
+      "type": "string",
+      "title": "Which sessions to show",
+      "description": "account+repo: this account's sessions in this repo. repo: every account's sessions in this repo. all: everything KIT Hub tracks.",
+      "default": "account+repo",
+      "options": [
+        "account+repo",
+        "repo",
+        "all"
+      ]
+    },
+    "autoWatch": {
+      "type": "boolean",
+      "title": "Watch this repo",
+      "description": "When a session starts in a GitHub repo, track each new claude/* branch by itself (needs node and a signed-in gh).",
+      "default": true
+    },
+    "showBand": {
+      "type": "boolean",
+      "title": "Show the band",
+      "description": "Draw the cloud band above the prompt. Off keeps /cloud.",
+      "default": true
+    },
+    "notifications": {
+      "type": "boolean",
+      "title": "Desktop notifications",
+      "description": "Let KIT Hub show a system notification when a session needs you and no Claude session is open for it.",
+      "default": true
+    },
+    "deleteMergedBranches": {
+      "type": "boolean",
+      "title": "Delete merged claude/* branches",
+      "description": "After a tracked PR merges, delete its claude/* branch on GitHub, only while the branch still points at the merged commit.",
+      "default": false
+    }
+  },
+  "dependencies": [
+    "kit-cloud-pilot"
+  ]
+}

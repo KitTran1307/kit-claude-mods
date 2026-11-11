@@ -1,0 +1,52 @@
+{
+  "name": "kit-todos",
+  "version": "1.2.1",
+  "description": "Your open to-do tasks for the current project in a band above the prompt, with one-press buttons to hand a task to Claude, plus a pane, a /todo command and the project's latest memories.",
+  "author": {
+    "name": "Kit Tran",
+    "url": "https://github.com/KitTran1307"
+  },
+  "homepage": "https://github.com/KitTran1307/kit-claude-mods/tree/main/plugins/kit-todos",
+  "repository": "https://github.com/KitTran1307/kit-claude-mods",
+  "license": "MIT",
+  "keywords": [
+    "todo",
+    "reminders",
+    "tasks",
+    "memory",
+    "band"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "todosFile": {
+      "type": "string",
+      "title": "Todos file",
+      "description": "Path of the JSON file that holds your tasks. ~ means your home folder; a relative path is taken from your home folder. A missing file is an empty list, and /todo add creates it.",
+      "default": "~/.claude/kit-todos/todos.json"
+    },
+    "soonDays": {
+      "type": "number",
+      "title": "Due-soon window (days)",
+      "description": "A task due within this many days counts as \"Due soon\". Whole number from 0 to 30; a value outside that range is cut to it.",
+      "default": 2
+    },
+    "showBand": {
+      "type": "boolean",
+      "title": "Show the band above the prompt",
+      "description": "Turn off to hide the band. The /todo command, the pane and the count in the status line keep working.",
+      "default": true
+    },
+    "showMemories": {
+      "type": "boolean",
+      "title": "Show the project's latest memories",
+      "description": "Show the newest memory of the current project in the band and the latest ones in the pane.",
+      "default": true
+    },
+    "memoriesAllProfiles": {
+      "type": "boolean",
+      "title": "Look for memories in every account profile",
+      "description": "Off: only the current profile's memories (CLAUDE_CONFIG_DIR, else ~/.claude). On: also ~/.claude and every ~/.claude-* profile, newest wins, so another account's memories can show in this session.",
+      "default": false
+    }
+  }
+}

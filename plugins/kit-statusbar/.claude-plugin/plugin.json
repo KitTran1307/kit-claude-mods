@@ -1,0 +1,62 @@
+{
+  "name": "kit-statusbar",
+  "version": "1.2.0",
+  "description": "A status bar for Claude Code in the desktop app and the CLI: repo, model, effort, context, account, session title, 5-hour and weekly limits.",
+  "author": {
+    "name": "KitTran1307"
+  },
+  "homepage": "https://github.com/KitTran1307/kit-claude-mods",
+  "repository": "https://github.com/KitTran1307/kit-claude-mods",
+  "license": "MIT",
+  "keywords": [
+    "statusline",
+    "status-bar",
+    "usage",
+    "limits",
+    "desktop"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "surfaces": {
+      "type": "string",
+      "title": "Where to draw the band",
+      "description": "auto: in the Claude desktop app always, and in the terminal when no status line is set up there (so you never see the same facts twice); with one, it asks once whether to show both and saves the answer here. desktop: the desktop app only. desktop+terminal: both, always.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "desktop",
+        "desktop+terminal"
+      ]
+    },
+    "weeklyBudgetPerDay": {
+      "type": "number",
+      "title": "Weekly budget per day (%)",
+      "description": "Share of the weekly limit you plan to use per day, current day included, shown next to the weekly bar. 14 is an even spread over 7 days. 0 or less hides the budget.",
+      "default": 14
+    },
+    "showEmail": {
+      "type": "boolean",
+      "title": "Show the account email",
+      "description": "Shown by default. Turn off before screen-sharing or screenshots. The plugin then does not look the email up at all.",
+      "default": true
+    },
+    "showTitle": {
+      "type": "boolean",
+      "title": "Show the session title",
+      "description": "The /rename name, else the automatic title, read from this session's own transcript. Turn off before screen-sharing if titles can be sensitive.",
+      "default": true
+    },
+    "showLimits": {
+      "type": "boolean",
+      "title": "Show the 5-hour and weekly limits",
+      "description": "The row is hidden on its own when there is no rate-limit data (API key or third-party provider).",
+      "default": true
+    },
+    "maxTranscriptMB": {
+      "type": "number",
+      "title": "Largest transcript to read (MB)",
+      "description": "How much of the session transcript is looked at to find its title. The module reads up to 4 MB itself; a larger transcript is read from its end by the optional Node helper, up to this many MB. Without Node the last known title stays.",
+      "default": 8
+    }
+  }
+}

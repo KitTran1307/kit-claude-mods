@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  plugins:
+    name: Plugins (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: Validate the marketplace and each plugin
+        shell: bash
+        run: |
+          claude plugin validate .
+          for p in plugins/*/; do claude plugin validate "$p"; done
+      - name: Test each plugin
+        shell: bash
+        run: |
+          for p in plugins/*/; do claude plugin test "$p"; done
+      - name: Session helper tests
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(plugins/kit-statusbar/scripts/*.test.mjs)
+          if [ ${#files[@]} -gt 0 ]; then node --test "${files[@]}"; fi
