@@ -1,5 +1,10 @@
 # Changelog
 
+## Repository: releases only
+
+- This repository now holds releases only: one commit per release, with its notes here and on the Releases page.
+  Pull requests are closed with a pointer to issues (see CONTRIBUTING.md); CI runs on every release. No plugin changed.
+
 ## kit-cloud 2.1.0
 
 - The band (and `/cloud`) warns when this session owns live cloud tracks but no `cloud-pilot wait` runs for it (it
