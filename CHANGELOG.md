@@ -1,5 +1,38 @@
 # Changelog
 
+## kit-todos 1.3.0, kit-cloud 2.1.1, kit-statusbar 1.2.1
+
+Fixes for issues reported by users. Thank you for the reports.
+
+### kit-todos
+
+- **No more lost changes.** Two sessions saving the list at the same moment could overwrite each other. Sessions now
+  take turns using a small lock file (`todos.json.lock`). After saving, each session checks that its change is in the
+  file and applies it again if someone else saved over it.
+- **`/todo done <number>` marks the task you saw.** The number now refers to the last `/todo` list shown in this
+  session, even if another session has changed the list since. In a new session, run `/todo` first.
+- **Tasks stay with their repository.** Two repositories with the same folder name no longer share tasks, and
+  renaming a folder keeps its tasks. New tasks record their repository (from the `origin` remote, or the folder
+  path). Older tasks still match by folder name; run `/todo claim` to link them to the current repository.
+  `/todo` tells you when this is needed.
+- **The pane shows every task.** It starts with 50 open tasks; **Show more** adds 50 more.
+
+### kit-cloud and kit-statusbar
+
+- The install instructions now give the Claude Code version each command needs: 2.1.275 or later for
+  `/plugin install … --marketplace` in a session, 2.1.292 or later for `claude plugin install … --marketplace` in a
+  shell, and a two-step command for older versions.
+- kit-cloud now states clearly that it uses the GitHub API through your `gh` login, and how to turn off automatic
+  repository watching (`autoWatch`).
+
+### Repository
+
+- kit-cloud-pilot is pinned to an exact release (`v1.1.1`), so every install of this release gets the same code.
+- CI uses a fixed Claude Code version on Windows, macOS and Linux, and installs every plugin from scratch on each.
+  A separate job tests the newest Claude Code.
+- The README lists what each plugin accesses over the network, and a new Feedback section and bug report form
+  explain how to report problems.
+
 ## Repository: releases only
 
 - This repository now holds releases only: one commit per release, with its notes here and on the Releases page.

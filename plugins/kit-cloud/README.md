@@ -25,6 +25,11 @@ installs kit-cloud-pilot with it.
   Without them the plugin stays quiet; `/cloud doctor` says what is missing.
 - The repo's `origin` remote on GitHub. Cloud sessions push to `claude/...` branches there.
 
+**Network:** unlike kit-statusbar and kit-todos, this plugin uses the network. kit-cloud-pilot uses the GitHub API
+through your own `gh` login, and nothing else. By default (`autoWatch`), it watches each GitHub repository you open
+Claude Code in for new `claude/*` branches. Set `autoWatch` to `false` in `/config` to follow only the sessions you
+track yourself.
+
 ## Install
 
 In a Claude Code terminal session:
@@ -33,7 +38,7 @@ In a Claude Code terminal session:
 /plugin install kit-cloud --marketplace KitTran1307/kit-claude-mods
 ```
 
-From a shell: `claude plugin install kit-cloud --marketplace KitTran1307/kit-claude-mods`.
+From a shell (Claude Code 2.1.292 or later): `claude plugin install kit-cloud --marketplace KitTran1307/kit-claude-mods`.
 In the desktop app: **+** next to the prompt box → **Plugins** → **Add marketplace** `KitTran1307/kit-claude-mods` →
 **Add plugin**. Or ask Claude: *"Install the kit-cloud plugin from the KitTran1307/kit-claude-mods marketplace"*
 (see [INSTALL.md](../../INSTALL.md)). Then run `/cloud doctor`.

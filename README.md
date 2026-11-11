@@ -34,7 +34,8 @@ Claude follows [INSTALL.md](INSTALL.md): it checks what your machine has, instal
 
 ### By hand
 
-In a Claude Code **terminal** session (answer `y` to add the marketplace, then pick the scope, user is the usual one):
+In a Claude Code **terminal** session, Claude Code 2.1.275 or later (answer `y` to add the marketplace, then pick
+the scope, user is the usual one):
 
 ```
 /plugin install kit-cloud --marketplace KitTran1307/kit-claude-mods
@@ -42,10 +43,17 @@ In a Claude Code **terminal** session (answer `y` to add the marketplace, then p
 /plugin install kit-todos --marketplace KitTran1307/kit-claude-mods
 ```
 
-From a shell instead:
+From a shell instead, Claude Code 2.1.292 or later (`claude --version`; `claude update` updates it):
 
 ```
 claude plugin install kit-todos --marketplace KitTran1307/kit-claude-mods
+```
+
+On an older Claude Code, add the marketplace first, then install by plugin id:
+
+```
+claude plugin marketplace add KitTran1307/kit-claude-mods
+claude plugin install kit-todos@kit-claude-mods
 ```
 
 In the **desktop app**, where `/plugin` is not available: click **+** next to the prompt box → **Plugins** →
@@ -68,9 +76,19 @@ Every plugin has options (which surfaces to draw on, where the to-do file lives,
 
 ## Privacy
 
-Nothing here sends data anywhere. kit-statusbar and kit-todos read local files only (this session's transcript, your
-login record for the email, your to-do file and memory folders). kit-cloud-pilot (which kit-cloud draws) talks to GitHub through your own `gh`
-login and nothing else. See [SECURITY.md](SECURITY.md).
+| Plugin | Network |
+| --- | --- |
+| kit-statusbar | None. Reads local files only: this session's transcript and your login record (for the email). |
+| kit-todos | None. Reads and writes your to-do file, reads your memory index. |
+| kit-cloud | **Uses the GitHub API** through kit-cloud-pilot and your own `gh` login, and nothing else. By default (`autoWatch`), it watches each GitHub repository you open Claude Code in for new `claude/*` branches. Set `autoWatch` to `false` in `/config` to follow only the sessions you track yourself. |
+
+No plugin sends data to any other service, and none collects telemetry. Details in [SECURITY.md](SECURITY.md).
+
+## Feedback
+
+To report a bug or suggest an idea, open an [issue](https://github.com/KitTran1307/kit-claude-mods/issues/new/choose)
+(a form guides you). This repository only publishes releases, so pull requests are closed automatically; please
+open an issue instead. For security problems, follow [SECURITY.md](SECURITY.md) and do not open a public issue.
 
 ## Development
 

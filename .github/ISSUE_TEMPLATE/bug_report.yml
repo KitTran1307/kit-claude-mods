@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in kit-cloud, kit-statusbar or kit-todos does not work as described.
+labels: [bug]
+body:
+  - type: dropdown
+    id: plugin
+    attributes:
+      label: Plugin
+      options: [kit-cloud, kit-statusbar, kit-todos, installing or updating, not sure]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran or pressed, what you expected, and what happened instead. Paste messages as text.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. claude plugin install kit-todos --marketplace KitTran1307/kit-claude-mods
+        2. /todo add Something
+        3. ...
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `claude --version` and `claude plugin list` (the plugin's version line), plus `node --version` and `gh --version` for kit-cloud.
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      multiple: true
+      options: [CLI on Windows, CLI on macOS, CLI on Linux, Desktop app on Windows, Desktop app on macOS]
+    validations:
+      required: true
+  - type: textarea
+    id: debug
+    attributes:
+      label: Debug lines (optional)
+      description: Start Claude Code with `claude --debug` and paste the lines that start with the plugin's name. Remove anything private first.
+      render: text

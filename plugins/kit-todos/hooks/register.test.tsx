@@ -48,6 +48,13 @@ type World = {
   names: string[] // entries of the home folder
   cwd: string
   repo: string | null | 'error' // the repository root, none, or session.repo failing
+  remote: string | null // the repository's origin remote
+  lock: string | null // text of the lock file beside the todos file; null = none
+  /** Called at each clock.sleep (n from 1): where another writer acts while this session waits. */
+  onSleep?: (n: number) => void
+  sleeps: number
+  /** Called after each write of the todos file: where another writer acts right after this one. */
+  afterWrite?: () => void
   memory: Record<string, number> // config folder -> modified time of its MEMORY.md for the project
   failFs: boolean // fs.list and fs.stat refuse
   failEnv: boolean // env.get refuses
@@ -81,6 +88,9 @@ function engine(on: any, over: Partial<World> = {}): World {
     names: ['.claude', '.claude-team', '.claude-old', 'Documents'],
     cwd: 'D:\\Work\\Acme',
     repo: 'D:\\Work\\Acme',
+    remote: null,
+    lock: null,
+    sleeps: 0,
     memory: { 'C:/Users/x/.claude': 5 },
     failFs: false,
     failEnv: false,
@@ -95,10 +105,12 @@ function engine(on: any, over: Partial<World> = {}): World {
   on('fs.list', () => (w.failFs || w.failAll
     ? refuse('EACCES')
     : { value: w.names.map(name => ({ name, kind: 'dir', size: 0, mtimeMs: 0, isLink: false })) }))
-  on('fs.exists', () => (w.failAll ? refuse('no') : { value: w.todos !== null }))
+  const isLock = (p: unknown) => norm(p).endsWith('.lock')
+  on('fs.exists', (_: unknown, e: any) => (w.failAll ? refuse('no') : { value: isLock(e.path) ? w.lock !== null : w.todos !== null }))
+  on('clock.sleep', () => { w.sleeps += 1; w.onSleep?.(w.sleeps); return { value: undefined } })
   on('session.repo', () => (w.repo === 'error' || w.failAll
     ? refuse('not a repository')
-    : { value: w.repo === null ? null : { root: w.repo, remote: null, branch: 'main' } }))
+    : { value: w.repo === null ? null : { root: w.repo, remote: w.remote, branch: 'main' } }))
   on('ui.toast', (_: unknown, e: any) => { w.toasts.push(String(e.text)); return { value: undefined } })
   on('ui.status', (_: unknown, e: any) => { w.statuses.push(e.text); return { value: undefined } })
   on('session.start', (_: unknown, e: any) => ({ cwd: e.cwd }))
@@ -109,11 +121,19 @@ function engine(on: any, over: Partial<World> = {}): World {
     const path = norm(e.path)
     w.reads.push(path)
     if (w.failAll) return refuse('no')
+    if (isLock(path)) return w.lock === null ? refuse('ENOENT') : { value: w.lock }
     const dir = /([^/]+)\/projects\/[^/]+\/memory\/MEMORY\.md$/.exec(path)?.[1]
     if (dir) return w.failIndex ? refuse('EIO') : { value: `- [Memory of ${dir}](m.md) - what it says\n` }
     return w.todos === null ? refuse('ENOENT') : { value: w.todos }
   })
-  on('fs.write', (_: unknown, e: any) => { w.written.push({ path: norm(e.path), text: String(e.text) }); w.todos = String(e.text); return { value: undefined } })
+  on('fs.write', (_: unknown, e: any) => {
+    if (w.failAll) return refuse('no')
+    if (isLock(e.path)) { w.lock = String(e.text); return { value: undefined } }
+    w.written.push({ path: norm(e.path), text: String(e.text) })
+    w.todos = String(e.text)
+    w.afterWrite?.()
+    return { value: undefined }
+  })
   // The engine hands paths on in the platform's spelling (backslashes on Windows).
   on('fs.stat', (_: unknown, e: any) => {
     const path = norm(e.path)
@@ -595,6 +615,7 @@ test('a todos file that cannot be read is never overwritten', async ($, on) => {
   expect(w.written).toHaveLength(0)
   expect(w.toasts).toHaveLength(1)
   expect(w.toasts[0]).toContain(DEFAULT_FILE)
+  await run($, '')
   expect(await run($, 'done 1')).toContain('There is no task 1') // nothing to mark in a list that cannot be read
   expect(w.written).toHaveLength(0)
 
@@ -631,6 +652,7 @@ test('entries the band cannot show are kept as they are when the file is written
   expect(written[odd.length].project).toBe('Acme')
   expect(w.written[0]?.text.endsWith('\n')).toBe(true)
   // Marking done keeps the others too, with their positions.
+  await run($, '')
   expect(await run($, 'done 1')).toBe('Done: Keep me')
   const after = JSON.parse(w.written[1]?.text ?? '[]')
   expect(after[0]).toMatchObject({ id: 'keep', done: true, doneAt: new Date(NOW).toISOString() })
@@ -657,6 +679,8 @@ test('/todo lists numbered tasks, opens the pane and names the file', async ($, 
     '2. [Due soon] Task with no project - today, Mon Nov 9',
     '3. [Due soon] Report the results - tomorrow, Tue Nov 10',
     '4. [No date] Email the supplier',
+    '3 tasks are matched by folder name only, so other folders with this name show them too.',
+    'Run /todo claim to link them to this repository.',
     `List file: ${DEFAULT_FILE}`,
   ])
   expect(w.opened).toEqual(['kit-todos'])
@@ -672,10 +696,13 @@ test('/todo add and done without a usable argument explain themselves', async ($
   expect(await run($, 'done -1')).toContain('Usage: /todo done <number>')
   expect(await run($, 'done 1.5')).toContain('Usage: /todo done <number>')
   expect(await run($, 'done 1 2')).toContain('Usage: /todo done <number>')
-  expect(await run($, 'done 0')).toBe('There is no task 0. Type /todo to see the numbered list.')
-  expect(await run($, 'DONE 9')).toBe('There is no task 9. Type /todo to see the numbered list.')
+  expect(await run($, 'done 1')).toBe('Type /todo first to see the numbered list, then /todo done <number>.')
+  await run($, '')
+  expect(await run($, 'done 0')).toBe('There is no task 0 in the last /todo list. Type /todo to see it again.')
+  expect(await run($, 'DONE 9')).toBe('There is no task 9 in the last /todo list. Type /todo to see it again.')
   expect(await run($, 'done 99999999999999999999')).toContain('There is no task')
-  expect(await run($, 'frobnicate')).toBe('Usage: /todo | /todo add <task> | /todo done <number>')
+  expect(await run($, 'frobnicate')).toBe('Usage: /todo | /todo add <task> | /todo done <number> | /todo claim')
+  expect(await run($, 'claim now')).toBe('Usage: /todo | /todo add <task> | /todo done <number> | /todo claim')
   expect(w.written).toHaveLength(0)
   expect(w.toasts).toHaveLength(0)
 })
@@ -683,6 +710,7 @@ test('/todo add and done without a usable argument explain themselves', async ($
 test('/todo done marks the task at that number, and /todo add keeps the spacing of the text', async ($, on) => {
   const w = engine(on, { cwd: 'D:\\Work\\Acme\\src' }) // a subfolder of the repository still counts
   await start($, w)
+  await run($, '')
   expect(await run($, 'done 1')).toBe('Done: Late task')
   expect(w.written).toHaveLength(1)
   const list = JSON.parse(w.written[0]!.text)
@@ -928,7 +956,7 @@ test('Done in the pane marks that task in the file', async ($, on) => {
   await pane.unmount()
 })
 
-test('the pane draws at most 50 tasks', async ($, on) => {
+test('the pane draws 50 tasks, and Show more draws 50 more', async ($, on) => {
   const many = Array.from({ length: 80 }, (_, i) => ({ id: `t${i}`, text: `Task number ${i}`, project: 'Acme' }))
   const w = engine(on, { todos: JSON.stringify(many) })
   await start($, w)
@@ -936,9 +964,14 @@ test('the pane draws at most 50 tasks', async ($, on) => {
   const texts = await textsOf(pane)
   expect(texts).toContain('Task number 49')
   expect(texts).not.toContain('Task number 50')
-  expect(texts).toContain('30 more are in the file.')
+  expect(texts).toContain('30 more open.')
+  await pane.press({ key: 'more' })
+  const all = await textsOf(pane)
+  expect(all).toContain('Task number 79')
+  expect(all.some(t => /more open/.test(t))).toBe(false)
+  expect(await pane.find({ type: 'Button', key: 'more' })).toBeUndefined()
   await pane.unmount()
-  expect((await run($, '')).split('\n')).toHaveLength(80 + 2) // the reply lists every task, so every number works
+  expect((await run($, '')).split('\n')).toHaveLength(80 + 4) // the reply (and the /todo claim hint) lists every task, so every number works
 })
 
 // --- memories --------------------------------------------------------------------------------------------------
@@ -1078,4 +1111,162 @@ test('a write that races another writer reads the file again, so neither change 
   w.todosStat = n => ({ size: n, mtimeMs: n })
   expect(await run($, 'add Never')).toContain('kept changing')
   expect(w.written.length).toBe(writes)
+})
+
+// --- several sessions writing at once ---------------------------------------------------------------------------
+
+const held = (token: string, until = NOW + 5_000) => JSON.stringify({ token, until })
+const RELEASED = JSON.stringify({ token: '', until: 0 })
+const addElsewhere = (w: World, id: string) => {
+  w.todos = JSON.stringify([...JSON.parse(w.todos ?? '[]'), { id, text: `Added by ${id}`, project: 'Acme', done: false }])
+}
+const savedList = (w: World): any[] => JSON.parse(w.todos ?? '[]')
+
+test('a session that holds the lock is waited for, so both changes are kept', async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  // Another session holds the lock: it adds its task and lets go while this one waits.
+  w.lock = held('other')
+  w.onSleep = n => { if (n === 2) { expect(w.written).toHaveLength(0); addElsewhere(w, 'theirs'); w.lock = RELEASED } }
+  expect(await run($, 'add Mine')).toBe('Added: Mine')
+  expect(savedList(w).some(t => t.id === 'theirs')).toBe(true)
+  expect(savedList(w).filter(t => t.text === 'Mine')).toHaveLength(1)
+  expect(w.written).toHaveLength(1)
+  expect(JSON.parse(w.lock ?? '{}').token).toBe('') // this session let go too
+})
+
+test('two sessions that both find the lock free and both claim it: the one read back holds it, the other waits', async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  // Both passed the last check together. The other wrote its token right after this one, so it holds the lock;
+  // this session must not write until it lets go.
+  w.onSleep = (n) => {
+    if (n === 1) w.lock = held('other')
+    if (n === 2) { expect(w.written).toHaveLength(0); addElsewhere(w, 'theirs'); w.lock = RELEASED }
+  }
+  expect(await run($, 'add Mine')).toBe('Added: Mine')
+  expect(savedList(w).some(t => t.id === 'theirs')).toBe(true)
+  expect(savedList(w).filter(t => t.text === 'Mine')).toHaveLength(1)
+  expect(w.written).toHaveLength(1)
+})
+
+test('a writer that ignores the lock and writes over this change right after: the change is made again, once', async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  let first = true
+  // Right after this write, someone who read the file before it (an editor, Claude) saves their own version.
+  w.afterWrite = () => {
+    if (!first) return
+    first = false
+    w.todos = JSON.stringify([...RAW, { id: 'theirs', text: 'Saved in an editor', done: false }])
+  }
+  expect(await run($, 'add Mine')).toBe('Added: Mine')
+  expect(savedList(w).some(t => t.id === 'theirs')).toBe(true)
+  expect(savedList(w).filter(t => t.text === 'Mine')).toHaveLength(1)
+  expect(w.written).toHaveLength(2)
+  // Marking done is checked the same way.
+  await run($, '')
+  first = true
+  w.afterWrite = () => { if (first) { first = false; w.todos = JSON.stringify(RAW) } }
+  expect(await run($, 'done 1')).toBe('Done: Late task')
+  expect(savedList(w).find(t => t.id === 'over')).toMatchObject({ done: true, doneAt: new Date(NOW).toISOString() })
+})
+
+test('a lock that stays busy writes nothing and says so; a stopped writer\'s lock is taken over', async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  w.lock = held('other')
+  const out = await run($, 'add Mine')
+  expect(out).toContain('another session is changing the list')
+  expect(w.written).toHaveLength(0)
+  expect(JSON.parse(w.lock ?? '{}').token).toBe('other') // never taken from a live holder
+  for (const stale of [held('crashed', NOW - 1), held('skewed', NOW + 10 * 86_400_000), '{broken']) {
+    w.lock = stale
+    expect(await run($, 'add Mine')).toBe('Added: Mine')
+  }
+  expect(w.written).toHaveLength(3)
+})
+
+// --- /todo done numbers -----------------------------------------------------------------------------------------
+
+test('/todo done marks the task the last /todo showed at that number, even when the list changed since', async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  expect(await run($, '')).toContain('1. [Overdue] Late task')
+  // Another session adds an overdue task that now sorts first: number 1 still means what was shown.
+  w.todos = JSON.stringify([{ id: 'new', text: 'Newer overdue', project: 'Acme', due: '2026-11-01', done: false }, ...RAW])
+  expect(await run($, 'done 1')).toBe('Done: Late task')
+  expect(savedList(w).find(t => t.id === 'over')?.done).toBe(true)
+  expect(savedList(w).find(t => t.id === 'new')?.done).toBe(false)
+  // A shown task that is gone from the file is not guessed.
+  w.todos = JSON.stringify(RAW.filter(t => t.id !== 'none'))
+  const writes = w.written.length
+  expect(await run($, 'done 4')).toContain('Could not mark "Email the supplier" done: that task is no longer in the file')
+  expect(w.written).toHaveLength(writes)
+})
+
+// --- repositories -----------------------------------------------------------------------------------------------
+
+test('two repositories with the same folder name keep their own tasks, and a renamed folder keeps them', async ($, on) => {
+  const w = engine(on, { todos: '[]', cwd: 'D:\\Work\\api', repo: 'D:\\Work\\api', remote: 'git@github.com:acme/api.git' })
+  await start($, w)
+  expect(await run($, 'add Mine in acme/api')).toBe('Added: Mine in acme/api')
+  expect(savedList(w)[0]).toMatchObject({ project: 'api', repo: 'git:github.com/acme/api' })
+  w.remote = 'https://github.com/other/api'
+  expect(await run($, '')).not.toContain('Mine in acme/api')
+  w.remote = 'https://github.com/acme/api.git'
+  w.repo = 'D:\\Work\\api-renamed'
+  w.cwd = 'D:\\Work\\api-renamed'
+  expect(await run($, '')).toContain('1. [No date] Mine in acme/api')
+})
+
+test('/todo claim ties the tasks that match by folder name only to this repository', async ($, on) => {
+  const w = engine(on, { remote: 'git@github.com:acme/acme.git' })
+  await start($, w)
+  expect(await run($, '')).toContain('3 tasks are matched by folder name only')
+  expect(await run($, 'claim')).toBe('Linked 3 tasks to this repository.')
+  const saved = savedList(w)
+  for (const id of ['soon', 'none', 'over']) expect(saved.find(t => t.id === id)?.repo).toBe('git:github.com/acme/acme')
+  for (const id of ['other', 'done', 'free']) expect(saved.find(t => t.id === id)?.repo).toBeUndefined()
+  expect(await run($, 'claim')).toBe('Nothing to claim: every task for this folder name is already linked to this repository.')
+  expect(await run($, '')).not.toContain('by folder name only')
+  // Another repository with the same folder name no longer sees them; a task with no project still shows everywhere.
+  w.remote = 'git@github.com:someone/acme.git'
+  const there = await run($, '')
+  expect(there).not.toContain('Late task')
+  expect(there).toContain('Task with no project')
+  // There they are named as hidden tasks of this folder name, and a claim (this repository after a new remote) brings them back.
+  expect(there).toContain('3 tasks for this folder name are linked to another repository and hidden here')
+  expect(await run($, 'claim')).toBe('Linked 3 tasks to this repository.')
+  expect(await run($, '')).toContain('Late task')
+})
+
+test('/todo claim finds the tasks by id when entries were added above them meanwhile, and counts what it tied', async ($, on) => {
+  const w = engine(on, { remote: 'git@github.com:acme/acme.git' })
+  await start($, w)
+  // After the claim read the list, an editor puts two entries in front (one of them Acme's, but not seen by the claim).
+  w.onSleep = (n) => {
+    if (n === 1) w.todos = JSON.stringify([{ id: 'x', text: 'New', project: 'Acme' }, { id: 'y', text: 'Other', project: 'Zeta' }, ...RAW])
+  }
+  expect(await run($, 'claim')).toBe('Linked 3 tasks to this repository.')
+  const saved = savedList(w)
+  for (const id of ['soon', 'none', 'over']) expect(saved.find(t => t.id === id)?.repo).toBe('git:github.com/acme/acme')
+  for (const id of ['x', 'y', 'other']) expect(saved.find(t => t.id === id)?.repo).toBeUndefined()
+})
+
+test('a task added while the repository cannot be asked gets no repo key, so it is not lost to a wrong one', async ($, on) => {
+  const w = engine(on, { repo: 'error', cwd: 'D:\\Work\\Acme' })
+  await start($, w)
+  expect(await run($, 'add Offline')).toBe('Added: Offline')
+  expect(savedList(w).at(-1)).toMatchObject({ text: 'Offline', project: 'Acme' })
+  expect(savedList(w).at(-1)?.repo).toBeUndefined()
+})
+
+test('a write that lands but cannot be read back does not claim that nothing was written', async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  w.afterWrite = () => { w.todos = '{half written' }
+  const out = await run($, 'add Mine')
+  expect(out).toContain('was written, but reading it back failed')
+  expect(out).not.toContain('Nothing was written')
 })

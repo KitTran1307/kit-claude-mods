@@ -16,6 +16,7 @@ gh auth status     # kit-cloud: must show a signed-in account
 ```
 
 - Claude Code missing or very old: tell the person to update Claude Code first (`claude update`), then stop.
+- Claude Code older than 2.1.292: the one-step shell install below does not exist yet; use the two-step form in step 2.
 - kit-cloud asked for but Node < 18 or missing, or `gh` missing or signed out: install the other plugins, then tell
   the person exactly what kit-cloud still needs (https://nodejs.org, https://cli.github.com, `gh auth login`).
   Do not install Node or gh, and never run `gh auth login` for them: signing in is theirs to do.
@@ -28,9 +29,16 @@ From a shell (works the same on every OS):
 claude plugin install <plugin> --marketplace KitTran1307/kit-claude-mods
 ```
 
-once per plugin. The first one adds the marketplace. If the command asks a question it cannot answer
+once per plugin (Claude Code 2.1.292 or later). The first one adds the marketplace. On an older Claude Code:
+
+```
+claude plugin marketplace add KitTran1307/kit-claude-mods
+claude plugin install <plugin>@kit-claude-mods
+```
+
+If the command asks a question it cannot answer
 non-interactively, give the person the in-session line instead and let them run it:
-`/plugin install <plugin> --marketplace KitTran1307/kit-claude-mods`.
+`/plugin install <plugin> --marketplace KitTran1307/kit-claude-mods` (Claude Code 2.1.275 or later).
 
 Already installed? `claude plugin update <plugin>` brings it to the newest version.
 
@@ -53,11 +61,14 @@ start a new session (or type `/reload-plugins`) and try `/todo` and `/cloud` the
 ## 4. Tell the person
 
 One short message: what was installed, what each one shows and where, the one command to try for each (`/todo`,
-`/cloud`), anything still missing (for kit-cloud), and that options live in `/config`.
+`/cloud`), anything still missing (for kit-cloud), and that options live in `/config`. If kit-cloud was installed,
+say that it calls the GitHub API through their `gh` login and by default watches each GitHub repo they open Claude
+Code in for `claude/*` branches (`autoWatch` in `/config` turns that off); kit-statusbar and kit-todos use no network.
 
 ## Notes
 
 - Options are per plugin; see each plugin's README for the list and the `pluginConfigs` form for settings.json.
-- Nothing in these plugins sends data anywhere; see SECURITY.md.
+- kit-statusbar and kit-todos use no network. kit-cloud calls the GitHub API through kit-cloud-pilot and the person's
+  own `gh` login, and nothing else; no plugin sends data to any other service. See SECURITY.md.
 - To remove one: `/plugin uninstall <plugin>` (kit-cloud-pilot: also `cloud-pilot stop` and delete
   `~/.claude/cloud-pilot`).

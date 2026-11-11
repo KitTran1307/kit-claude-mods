@@ -1,6 +1,6 @@
 {
   "name": "kit-todos",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Your open to-do tasks for the current project in a band above the prompt, with one-press buttons to hand a task to Claude, plus a pane, a /todo command and the project's latest memories.",
   "author": {
     "name": "Kit Tran",

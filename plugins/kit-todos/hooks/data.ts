@@ -19,7 +19,7 @@ export const STATUSES: { id: Status; label: string }[] = [
   { id: 'done', label: 'Done' },
 ]
 
-export const LABELS = { now: 'Do it now', draft: 'Draft', done: 'Done', open: 'Open list', hide: 'Hide today' } as const
+export const LABELS = { now: 'Do it now', draft: 'Draft', done: 'Done', open: 'Open list', hide: 'Hide today', more: 'Show more' } as const
 
 /** Anthropic brand palette (anthropics/skills brand-guidelines) plus one red; lighter twins for a dark terminal. */
 export const COLORS: Record<'light' | 'dark', Record<Status, string>> = {
@@ -101,10 +101,62 @@ export function dueText(todo: Pick<Todo, 'due'>, now: number): string {
 
 // --- tasks -----------------------------------------------------------------------------------------------------
 
-/** A task with no project shows in every project; otherwise the names match ignoring case and outer spaces. */
-export function isMine(todo: Pick<Todo, 'project'>, project: string): boolean {
+/**
+ * A stable name for the repository a session is in, so two repositories with the same folder name never share
+ * tasks and a renamed folder keeps them: `git:<host>/<owner>/<name>` from the origin remote (lowercase, no `.git`,
+ * any protocol or user dropped), else `path:<root>` (the repository's or the working folder's absolute path).
+ */
+export function repoKeyOf(remote: string | null | undefined, root: string): string {
+  const url = typeof remote === 'string' ? remote.trim() : ''
+  const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?(?:[^@/\s]+@)?([a-z0-9][a-z0-9.-]*[a-z0-9])(?::\d+)?[:/]+([^\s]+?)(?:\.git)?\/*$/i.exec(url)
+  if (m && !/^[a-z]:[\\/]/i.test(url)) return `git:${(m[1] ?? '').toLowerCase()}/${(m[2] ?? '').replace(/^\/+/, '').toLowerCase()}`
+  const path = root.replace(/\\/g, '/').replace(/\/+$/, '')
+  return `path:${/^[a-zA-Z]:/.test(path) ? path.toLowerCase() : path}`
+}
+
+/** Where a session is: the folder name shown in the band, and the repository's stable key (see repoKeyOf). */
+export type Place = { project: string; repo?: string }
+
+/**
+ * Whether a task belongs here. A task with a `repo` key shows only in that repository. An older task with only a
+ * `project` name matches the folder name ignoring case and outer spaces (`/todo claim` ties it to one repository).
+ * A task with neither shows in every project.
+ */
+export function isMine(todo: Pick<Todo, 'project' | 'repo'>, place: Place | string): boolean {
+  const here = typeof place === 'string' ? { project: place } : place
+  const key = typeof todo.repo === 'string' ? todo.repo.trim() : ''
+  if (key) return !!here.repo && key === here.repo
   const own = typeof todo.project === 'string' ? todo.project.trim().toLowerCase() : ''
-  return !own || own === project.trim().toLowerCase()
+  return !own || own === here.project.trim().toLowerCase()
+}
+
+/** Whether an open entry of the file has this folder name as `project` but is not tied to this repository. */
+function isClaimable(t: unknown, place: Required<Place>): boolean {
+  if (!t || typeof t !== 'object') return false
+  const e = t as Record<string, unknown>
+  const project = typeof e.project === 'string' ? e.project.trim().toLowerCase() : ''
+  return e.done !== true && project !== '' && project === place.project.trim().toLowerCase() && e.repo !== place.repo
+}
+
+/**
+ * Open tasks named for this folder (`project`) that are not tied to this repository, which `/todo claim` ties here:
+ * older tasks with no `repo` (shown here, and in any folder of the same name), and tasks whose `repo` is another key
+ * (hidden here: this repository before a move, a new remote or a rename, or another repository of the same name).
+ */
+export function unclaimed(todos: Todo[], place: Place): Todo[] {
+  const here = place.repo
+  return here ? todos.filter(t => isClaimable(t, { project: place.project, repo: here })) : []
+}
+
+/** The list with `repo` set on the open entries with one of these ids that `unclaimed` would pick; `tied` counts them. */
+export function claimIds(list: unknown[], ids: ReadonlySet<string>, place: Required<Place>): { list: unknown[]; tied: number } {
+  let tied = 0
+  const out = list.map((t) => {
+    if (!isClaimable(t, place) || !ids.has(String((t as Todo).id))) return t
+    tied += 1
+    return { ...(t as object), repo: place.repo }
+  })
+  return { list: out, tied }
 }
 
 /** Open todos of this project (or of no project), most urgent first, then by due date, then in file order. */
@@ -112,7 +164,7 @@ export function openTodos(snap: Snapshot | null, now: number, soonDays: number =
   if (!snap) return []
   const rank = (t: Todo) => STATUSES.findIndex(s => s.id === statusOf(t, now, soonDays))
   return snap.todos
-    .filter(t => !t.done && isMine(t, snap.project))
+    .filter(t => !t.done && isMine(t, snap))
     .sort((a, b) => rank(a) - rank(b) || cmp(validDue(a) ?? '9999', validDue(b) ?? '9999') || a.index - b.index)
 }
 
@@ -122,7 +174,7 @@ const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 export function recentlyDone(snap: Snapshot | null, now: number): Todo[] {
   if (!snap) return []
   return snap.todos
-    .filter(t => t.done && isMine(t, snap.project) && t.doneAt && now - Date.parse(t.doneAt) < DAY_MS)
+    .filter(t => t.done && isMine(t, snap) && t.doneAt && now - Date.parse(t.doneAt) < DAY_MS)
     .sort((a, b) => Date.parse(b.doneAt ?? '') - Date.parse(a.doneAt ?? ''))
 }
 
@@ -181,6 +233,7 @@ export function usableTodos(list: unknown[]): Todo[] {
       text: t.text,
       note: typeof t.note === 'string' ? t.note : undefined,
       project: typeof t.project === 'string' ? t.project : undefined,
+      repo: typeof t.repo === 'string' ? t.repo : undefined,
       due: typeof t.due === 'string' ? t.due : undefined,
       done: t.done === true,
       doneAt: typeof t.doneAt === 'string' ? t.doneAt : undefined,

@@ -49,7 +49,7 @@ In a terminal session:
 Answer `y` to add the marketplace, then pick a scope (the user scope is the first one). A screen then lets you set
 the options (you can change them later, see below).
 
-From a shell:
+From a shell (Claude Code 2.1.292 or later):
 
 ```
 claude plugin install kit-statusbar --marketplace KitTran1307/kit-claude-mods

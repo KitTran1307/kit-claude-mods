@@ -34,7 +34,8 @@ and a single line when there is almost no room. It never scrolls.
 
 ## Requirements
 
-- A recent Claude Code with plugin hooks modules (2.1.275 or later for the one-line install below).
+- A recent Claude Code with plugin hooks modules. The one-line installs below need 2.1.275 or later in a session
+  (`/plugin install … --marketplace`) and 2.1.292 or later from a shell (`claude plugin install … --marketplace`).
 - The Claude Code CLI or the Claude desktop app, on Windows, macOS or Linux.
 - Nothing else: no Node, no Python, no account. The plugin only reads and writes your todos file and reads the
   project's memory index; it uses no network.
@@ -49,7 +50,7 @@ and a single line when there is almost no room. It never scrolls.
 
   Answer `y` to add the marketplace, pick a scope, and set the options on the screen that follows (or accept the defaults).
 
-- From a shell:
+- From a shell (Claude Code 2.1.292 or later):
 
   ```
   claude plugin install kit-todos --marketplace KitTran1307/kit-claude-mods
@@ -103,13 +104,17 @@ Set them in any of these ways:
 | --- | --- |
 | `/todo` | Opens the pane and lists this project's open tasks, numbered, with the path of the todos file. Also shows the band again if you hid it. |
 | `/todo add <task>` | Adds a task for the current project to the file. The first one creates the file. |
-| `/todo done <number>` | Marks the task with that number (from the `/todo` list) done. It stays visible in the pane for 24 hours. |
+| `/todo done <number>` | Marks a task done, using its number in the last `/todo` list of this session. It stays visible in the pane for 24 hours. |
+| `/todo claim` | Links the open tasks for this folder name to this repository. Use it for tasks created before version 1.3 (other folders with the same name stop showing them) and for tasks hidden after you moved this repository or changed its remote. `/todo` tells you when this is needed. |
 
-Without a task or a number, `/todo add` and `/todo done` print their usage and change nothing.
+Without a task or a number, `/todo add` and `/todo done` print their usage and change nothing. The number in
+`/todo done` always refers to the last `/todo` list in this session, even if another session has changed the list
+since. In a new session, run `/todo` first. If that task is no longer in the file, nothing is changed and the reply
+says so.
 
 Buttons: **Do it now** sends the task to Claude as a prompt (and hides the band for the day), **Draft** only puts it
 in the prompt box so you can edit it first, **Done** (in the pane) marks it done, **Open list** opens the pane,
-**Hide today** hides the band until tomorrow.
+**Hide today** hides the band until tomorrow. The pane draws 50 open tasks at first; **Show more** draws 50 more.
 
 **Do it now** sends at once only when the card shows everything the prompt carries. When the task has a `note`, text
 longer than the card shows, wider than a one-line list row shows (a short terminal), or on several lines, an `id` outside letters, digits, `.`, `_` and `-` (64 at most), or invisible characters
@@ -137,7 +142,8 @@ A JSON array of tasks. Edit it by hand, let Claude edit it, or use `/todo add`.
 | `id` | yes | A non-empty string; keep it to letters, digits, `.`, `_` and `-` (64 at most), or **Do it now** drafts instead of sending. Claude is told this id when you hand it a task. Make them unique; repeats still work (see below). |
 | `text` | yes | The task. Long text is shortened on screen, but Claude gets all of it. |
 | `note` | no | Extra detail sent to Claude with the task. |
-| `project` | no | The folder name of the project's git repository (or of the working folder when it is not a repository), compared ignoring case. A task with no project shows in every project. |
+| `project` | no | The folder name of the project's git repository (or of the working folder when it is not a repository), compared ignoring case. Used to find the task only when it has no `repo`. A task with neither `project` nor `repo` shows in every project. |
+| `repo` | no | The repository the task belongs to; `/todo add` and `/todo claim` set it. It is `git:<host>/<owner>/<name>` from the `origin` remote, so the task stays with the repository when you rename or re-clone the folder. Without a remote it is `path:<folder>`. When set, the task shows only in that repository. |
 | `due` | no | A day, `YYYY-MM-DD`. Anything else (`2026-11-9`, `2026-02-30`, `tomorrow`) counts as no date. |
 | `done` | no | `true` when finished. Anything but `true` means open. |
 | `doneAt` | no | When it was marked done, an ISO 8601 UTC time. Done tasks show in the pane for 24 hours after this. |
@@ -152,7 +158,12 @@ your machine's local time, and written in English ("today, Mon Nov 9", "tomorrow
 - A todos file that cannot be parsed (broken JSON, or JSON that is not a list) is never overwritten. A notification
   says why, `/todo` and the pane show a warning, and nothing is written until you fix the file.
 - Entries the plugin cannot show (no `id`, no `text`, not an object) are left exactly as they are when it writes.
-  It only ever adds an entry (`/todo add`) or sets `done` and `doneAt` on one; it never deletes or reorders.
+  It only adds entries (`/todo add`), sets `done` and `doneAt` (`/todo done`, **Done**) or sets `repo`
+  (`/todo claim`). It never deletes or reorders entries.
+- Several sessions can save the list at the same time. They take turns using a small lock file next to it
+  (`todos.json.lock`, safe to delete when no session is saving). After saving, a session checks that its change is in
+  the file. If someone else (an editor, or Claude finishing a task) saved over it at that moment, the change is
+  applied again. If the lock stays busy for a few seconds, nothing is saved and you are told.
 - "Done" marks the entry you picked, even when several share an id. If the file changed since the list was shown
   and the plugin cannot tell which entry you meant, it writes nothing and says so.
 - When the plugin writes, it saves the file as JSON indented by two spaces, so the formatting of a hand-edited file
@@ -165,8 +176,10 @@ your machine's local time, and written in English ("today, Mon Nov 9", "tomorrow
 The band is not showing:
 
 1. `showBand` is `false` (check `/config`).
-2. There are no open tasks for this project. Tasks with a `project` show only in the project of that name; run
-   `/todo` to see what the plugin found and which file it reads (`List file:`).
+2. There are no open tasks for this project. A task with `repo` shows only in that repository; a task with only
+   `project` shows only in folders with that name. Run `/todo` to see what the plugin found and which file it reads
+   (`List file:`). If you renamed the folder of a task created before version 1.3, change its `project` to the new
+   name, then run `/todo claim`.
 3. You pressed **Hide today** or **Do it now**. The band returns tomorrow, or run `/todo` to bring it back.
 4. A question dialog (survey) is open, or Claude is working. The band comes back when it is idle.
 5. The todos file cannot be read: `/todo` prints a `Warning:` with the reason. Check the path in `todosFile`.

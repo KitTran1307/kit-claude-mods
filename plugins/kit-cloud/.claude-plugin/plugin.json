@@ -1,6 +1,6 @@
 {
   "name": "kit-cloud",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "See your Claude Code cloud sessions above the prompt: working, asking, PR open, CI failed or silent, with a link to each. The band for kit-cloud-pilot, which tracks them.",
   "author": {
     "name": "Kit Tran",

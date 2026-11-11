@@ -8,20 +8,24 @@ on:
 permissions:
   contents: read
 
+env:
+  # The Claude Code these checks are pinned to, so a run can be repeated. The `latest` job tries the newest one.
+  CLAUDE_CODE_VERSION: 2.1.322
+
 jobs:
   plugins:
     name: Plugins (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install -g @anthropic-ai/claude-code
+      - run: npm install -g "@anthropic-ai/claude-code@${{ env.CLAUDE_CODE_VERSION }}"
       - name: Validate the marketplace and each plugin
         shell: bash
         run: |
@@ -37,3 +41,51 @@ jobs:
           shopt -s nullglob
           files=(plugins/kit-statusbar/scripts/*.test.mjs)
           if [ ${#files[@]} -gt 0 ]; then node --test "${files[@]}"; fi
+
+  install:
+    name: Fresh install (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install -g "@anthropic-ai/claude-code@${{ env.CLAUDE_CODE_VERSION }}"
+      - name: Add this marketplace to an empty Claude config, install every plugin, update one
+        shell: bash
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-config
+        run: |
+          claude plugin marketplace add "$GITHUB_WORKSPACE"
+          for p in kit-cloud kit-statusbar kit-todos; do claude plugin install "$p@kit-claude-mods"; done
+          claude plugin update kit-todos@kit-claude-mods
+          claude plugin list --json > "$RUNNER_TEMP/plugins.json"
+          node -e '
+            const list = require(process.argv[1]);
+            const want = ["kit-cloud", "kit-cloud-pilot", "kit-statusbar", "kit-todos"].map(n => `${n}@kit-claude-mods`);
+            const bad = want.filter(id => { const p = list.find(x => x.id === id); return !p || !p.enabled || p.error || (p.errors && p.errors.length); });
+            if (bad.length) { console.error("not installed and enabled:", bad, JSON.stringify(list, null, 2)); process.exit(1); }
+            console.log(want.map(id => `${id} ${list.find(x => x.id === id).version}`).join("\n"));
+          ' "$RUNNER_TEMP/plugins.json"
+
+  latest:
+    name: Plugins on the newest Claude Code
+    runs-on: ubuntu-latest
+    # Reports early when a new Claude Code breaks something; the pinned jobs above decide whether a release is good.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install -g @anthropic-ai/claude-code@latest
+      - name: Validate and test each plugin
+        shell: bash
+        run: |
+          claude --version
+          claude plugin validate .
+          for p in plugins/*/; do claude plugin validate "$p" && claude plugin test "$p"; done

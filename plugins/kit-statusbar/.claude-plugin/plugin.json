@@ -1,6 +1,6 @@
 {
   "name": "kit-statusbar",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "A status bar for Claude Code in the desktop app and the CLI: repo, model, effort, context, account, session title, 5-hour and weekly limits.",
   "author": {
     "name": "KitTran1307"
