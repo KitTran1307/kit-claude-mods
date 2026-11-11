@@ -1,5 +1,11 @@
 # Changelog
 
+## kit-cloud-pilot 1.2.0
+
+The marketplace now installs kit-cloud-pilot 1.2.0 ([release notes](https://github.com/KitTran1307/kit-cloud-pilot/releases/tag/v1.2.0)):
+`start --model` and `--effort`, a `questions` command that lists a PR's open questions with the hash `answer` needs,
+and a PR merged outside GitHub is reported as merged instead of closed.
+
 ## kit-todos 1.3.0, kit-cloud 2.1.1, kit-statusbar 1.2.1
 
 Fixes for issues reported by users. Thank you for the reports.
