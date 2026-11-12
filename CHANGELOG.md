@@ -1,5 +1,11 @@
 # Changelog
 
+## Install: pick the plugins you want
+
+Asking Claude to install from this marketplace now starts with a question: which of kit-cloud, kit-statusbar and
+kit-todos you want, with what each one does and needs. Only the ones you pick are installed. Each plugin still
+installs, updates and uninstalls on its own by hand. No plugin changed.
+
 ## kit-cloud 2.2.0, kit-statusbar 1.3.0, kit-todos 1.4.0
 
 New features, and the mods now speak Vietnamese as well as English.

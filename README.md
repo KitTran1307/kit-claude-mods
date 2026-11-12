@@ -27,10 +27,11 @@ and share its height.
 
 Paste this into a Claude Code session:
 
-> Install the kit-cloud, kit-statusbar and kit-todos plugins from the KitTran1307/kit-claude-mods marketplace,
+> Install plugins from the KitTran1307/kit-claude-mods marketplace,
 > following https://github.com/KitTran1307/kit-claude-mods/blob/main/INSTALL.md
 
-Claude follows [INSTALL.md](INSTALL.md): it checks what your machine has, installs, and verifies each plugin.
+Claude asks which of the three you want (pick one, two or all), checks what your machine has, then installs and
+verifies only those, following [INSTALL.md](INSTALL.md). To skip the question, name them: "Install kit-todos from …".
 
 ### By hand
 

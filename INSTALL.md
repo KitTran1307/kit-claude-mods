@@ -4,6 +4,18 @@ These steps are written for Claude Code to follow when a person asks it to insta
 A person can follow them too. Install only the plugins the person asked for; if they said "all", that is
 `kit-cloud`, `kit-statusbar` and `kit-todos`.
 
+## 0. Let the person choose
+
+If the person did not name the plugins they want, ask before installing anything, in one question where they can
+pick several (in Claude Code, a multiple-choice question with several answers allowed), with these choices:
+
+- **kit-cloud**: your cloud sessions above the prompt, with a notification when one needs you. Needs Node 18+ and a
+  signed-in GitHub CLI (`gh`); installs kit-cloud-pilot with it.
+- **kit-statusbar**: a status bar (repo, model, context, usage limits), also in the desktop app. Needs nothing.
+- **kit-todos**: your project's to-dos above the prompt, and tasks Claude suggests for you to approve. Needs nothing.
+
+Install only what they pick. If they pick none, install nothing and stop.
+
 ## 1. Check the machine
 
 Run these and note the results (Windows: Git Bash or PowerShell both work):
