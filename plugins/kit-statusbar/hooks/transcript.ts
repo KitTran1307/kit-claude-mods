@@ -4,6 +4,8 @@
 import type { EngineInterface, FsEntry, FsStat } from 'claude-code'
 
 import { joinPath, parseLoginEmail } from './account'
+import { fitText } from './format'
+import type { HookFailure } from './i18n'
 
 export const MIB = 1024 * 1024
 /** The most `$.fs.read` returns in one call. */
@@ -60,6 +62,61 @@ export function transcriptEmail(text: string): string {
   return /^[\w.+-]+@[\w-]+(?:\.[\w-]+)+/.exec(text.slice(from, from + 320))?.[0] ?? ''
 }
 
+// ---------- hook failures ----------
+/** How many hooks failed in the text, and the latest failure. */
+export type HookErrors = { count: number; last: HookFailure | null }
+export const NO_HOOK_ERRORS: HookErrors = { count: 0, last: null }
+
+const HOOK_ERROR_TYPES = ['hook_non_blocking_error', 'hook_blocking_error']
+const COMMAND_ROOM = 60
+const REASON_ROOM = 80
+
+const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
+const record = (v: unknown): Record<string, unknown> | null => (v !== null && typeof v === 'object' ? (v as Record<string, unknown>) : null)
+
+// The hook, its command and why it failed, read defensively: the field names differ between versions and kinds.
+// A stack trace starts with where it was thrown; the line naming the error is the one worth showing.
+const CAUSE = /\b(?:\w*Error|error|No such file|not found|Cannot|ENOENT|EACCES|denied|does not exist)\b/i
+
+function hookFailure(att: Record<string, unknown>): HookFailure {
+  const nested = record(att.blockingError)
+  const raw = text(att.stderr) || text(att.content) || text(nested?.blockingError) || text(att.blockingError) || text(att.output) || text(att.message)
+  const lines = raw.replace(/^Failed with non-blocking status code:\s*/i, '').split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  const firstLine = lines.find(l => CAUSE.test(l)) ?? lines[0] ?? ''
+  return {
+    hook: text(att.hookName) || text(att.hookEvent) || text(att.hook_event_name),
+    command: fitText(text(att.command) || text(nested?.command), COMMAND_ROOM),
+    reason: fitText(firstLine.replace(/^Failed with non-blocking status code:\s*/i, ''), REASON_ROOM),
+  }
+}
+
+/**
+ * The hook failures this session's transcript records: `attachment` entries of type hook_non_blocking_error or
+ * hook_blocking_error. Like lastEntryField, only the unescaped `"type":"..."` key counts, so text quoted inside a
+ * message never does; a line that does not parse (cut short) or is not such an entry is skipped.
+ */
+export function hookErrors(transcript: string): HookErrors {
+  const seen = new Set<number>()
+  let count = 0
+  let lastAt = -1
+  let last: HookFailure | null = null
+  for (const type of HOOK_ERROR_TYPES) {
+    const key = `"type":"${type}"`
+    for (let at = transcript.indexOf(key); at >= 0; at = transcript.indexOf(key, at + key.length)) {
+      const start = transcript.lastIndexOf('\n', at) + 1
+      if (seen.has(start)) continue
+      seen.add(start)
+      const end = transcript.indexOf('\n', at)
+      const entry = parseObject(transcript.slice(start, end < 0 ? undefined : end))
+      const att = record(entry?.attachment) ?? entry
+      if (!att || !HOOK_ERROR_TYPES.includes(att.type as string)) continue
+      count += 1
+      if (start > lastAt) { lastAt = start; last = hookFailure(att) }
+    }
+  }
+  return { count, last }
+}
+
 // ---------- files, through $.fs ----------
 async function statFile($: EngineInterface, path: string): Promise<FsStat | null> {
   try {
@@ -91,9 +148,20 @@ export async function findTranscript($: EngineInterface, configDir: string, id: 
 }
 
 // ---------- the Node helper, when Node is there ----------
-export type HelperAnswer = { title: string; transcriptEmail: string; loginEmail: string }
+export type HelperAnswer = { title: string; transcriptEmail: string; loginEmail: string; hookErrors: HookErrors | null }
 /** Set once Node could not be started: it is not tried again until the module reloads. */
 export type NodeState = { missing: boolean }
+
+// The helper's hookErrors field; null when an older helper left it out or it is not in the expected shape.
+function helperHookErrors(v: unknown): HookErrors | null {
+  const o = record(v)
+  if (!o || typeof o.count !== 'number' || !Number.isFinite(o.count)) return null
+  const last = record(o.last)
+  return {
+    count: Math.max(0, Math.round(o.count)),
+    last: last ? { hook: text(last.hook), command: text(last.command), reason: text(last.reason) } : null,
+  }
+}
 
 export async function runHelper($: EngineInterface, args: readonly string[], node: NodeState): Promise<HelperAnswer | null> {
   if (node.missing) return null
@@ -114,8 +182,8 @@ export async function runHelper($: EngineInterface, args: readonly string[], nod
   }
   const v = parseObject(stdout)
   if (!v) return null
-  const text = (k: string): string => (typeof v[k] === 'string' ? (v[k] as string) : '')
-  return { title: text('title'), transcriptEmail: text('transcriptEmail'), loginEmail: text('loginEmail') }
+  const str = (k: string): string => (typeof v[k] === 'string' ? (v[k] as string) : '')
+  return { title: str('title'), transcriptEmail: str('transcriptEmail'), loginEmail: str('loginEmail'), hookErrors: helperHookErrors(v.hookErrors) }
 }
 
 /** oauthAccount.emailAddress of the login record; '' when the file is missing, not JSON or holds none. */
@@ -136,12 +204,12 @@ export async function readLoginEmail($: EngineInterface, loginFile: string, node
 }
 
 // ---------- title and email of one session ----------
-export type Memo = { id: string; path: string; mtimeMs: number; size: number; title: string; email: string }
-export type Facts = { title: string; email: string }
+export type Memo = { id: string; path: string; mtimeMs: number; size: number; title: string; email: string; hooks: HookErrors }
+export type Facts = { title: string; email: string; hooks: HookErrors }
 export type Lookup = { configDir: string; id: string; cwd: string; maxMB: number }
 
 /**
- * The title and the session-context email of a session's transcript, read only when the file changed since `prev`.
+ * The title, the session-context email and the hook failures of a session's transcript, read only when the file changed since `prev`.
  * Up to min(maxMB, 4) MB the module reads the file; above that the helper reads its last `maxMB` MB, and without
  * Node the last known values stay. `memo` is null while no transcript exists yet.
  */
@@ -155,17 +223,18 @@ export async function readTranscript(
     path = await findTranscript($, look.configDir, look.id, look.cwd)
     stat = path ? await statFile($, path) : null
   }
-  if (!stat) return { memo: null, facts: { title: '', email: '' } }
+  if (!stat) return { memo: null, facts: { title: '', email: '', hooks: NO_HOOK_ERRORS } }
   if (known && known.path === path && known.mtimeMs === stat.mtimeMs && known.size === stat.size) {
-    return { memo: known, facts: { title: known.title, email: known.email } }
+    return { memo: known, facts: { title: known.title, email: known.email, hooks: known.hooks } }
   }
 
-  let { title, email } = known ?? { title: '', email: '' }
+  let { title, email, hooks } = known ?? { title: '', email: '', hooks: NO_HOOK_ERRORS }
   if (stat.size <= Math.min(look.maxMB * MIB, FS_READ_CAP)) {
     try {
-      const text = await $.fs.read(path)
-      title = lastTitle(text)
-      email = transcriptEmail(text) || email
+      const body = await $.fs.read(path)
+      title = lastTitle(body)
+      email = transcriptEmail(body) || email
+      hooks = hookErrors(body)
     } catch (err) {
       $.ui.log(`transcript not read: ${String(err)}`, { to: 'debug' })
     }
@@ -175,7 +244,8 @@ export async function readTranscript(
     if (answer) {
       title = answer.title || title
       email = answer.transcriptEmail || email
+      hooks = answer.hookErrors ?? hooks
     }
   }
-  return { memo: { id: look.id, path, mtimeMs: stat.mtimeMs, size: stat.size, title, email }, facts: { title, email } }
+  return { memo: { id: look.id, path, mtimeMs: stat.mtimeMs, size: stat.size, title, email, hooks }, facts: { title, email, hooks } }
 }

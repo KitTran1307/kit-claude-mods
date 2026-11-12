@@ -2,6 +2,8 @@
 import type { PluginOptions } from 'claude-code'
 
 import { DEFAULT_BUDGET_PER_DAY } from './format'
+import { TABLES } from './i18n'
+import type { Lang, Strings } from './i18n'
 
 /**
  * Where the band draws. auto: the desktop app always, the terminal only when no status line is configured there
@@ -9,12 +11,17 @@ import { DEFAULT_BUDGET_PER_DAY } from './format'
  */
 export type Surfaces = 'auto' | 'desktop' | 'desktop+terminal'
 
+/** The band's language: `auto` follows the `language` setting of Claude Code (Vietnamese or else English). */
+export type Language = 'auto' | Lang
+
 export type Config = {
   surfaces: Surfaces
+  language: Language
   weeklyBudgetPerDay: number
   showEmail: boolean
   showTitle: boolean
   showLimits: boolean
+  showHookErrors: boolean
   maxTranscriptMB: number
 }
 
@@ -26,10 +33,12 @@ export function readConfig(options: PluginOptions | undefined): Config {
   const o = options ?? {}
   return {
     surfaces: o.surfaces === 'desktop' || o.surfaces === 'desktop+terminal' ? o.surfaces : 'auto',
+    language: o.language === 'en' || o.language === 'vi' ? o.language : 'auto',
     weeklyBudgetPerDay: num(o.weeklyBudgetPerDay, DEFAULT_BUDGET_PER_DAY),
     showEmail: o.showEmail !== false,
     showTitle: o.showTitle !== false,
     showLimits: o.showLimits !== false,
+    showHookErrors: o.showHookErrors !== false,
     maxTranscriptMB: Math.max(1, num(o.maxTranscriptMB, DEFAULT_MAX_TRANSCRIPT_MB)),
   }
 }
@@ -44,16 +53,17 @@ export const drawsOn = (cfg: Config, surface: string, terminalHasStatusLine: boo
   return cfg.surfaces === 'desktop+terminal' || (cfg.surfaces === 'auto' && terminalHasStatusLine === false)
 }
 
-/** The question asked once when `auto` finds a status line in the terminal, and the `surfaces` value each answer keeps. */
-export const STATUS_LINE_QUESTION = 'kit-statusbar: you already have a status line in this terminal. Show the kit-statusbar band here as well?'
+/** What each answer of the once-asked question keeps: the key of its label in the language tables, and the `surfaces` value. */
 export const STATUS_LINE_ANSWERS = [
-  { label: 'Keep only my status line', surfaces: 'desktop' },
-  { label: 'Show both', surfaces: 'desktop+terminal' },
-] as const satisfies readonly { label: string; surfaces: Surfaces }[]
+  { key: 'answerKeepMine', surfaces: 'desktop' },
+  { key: 'answerShowBoth', surfaces: 'desktop+terminal' },
+] as const satisfies readonly { key: keyof Strings; surfaces: Surfaces }[]
 
-/** The `surfaces` value an answer picks; anything else (free text under Other) picks nothing. */
-export const surfacesForAnswer = (answer: string): Surfaces | null =>
-  STATUS_LINE_ANSWERS.find(a => a.label === answer.trim())?.surfaces ?? null
+/** The `surfaces` value an answer picks, whichever language it was asked in; anything else (free text under Other) picks nothing. */
+export const surfacesForAnswer = (answer: string): Surfaces | null => {
+  const text = answer.trim()
+  return STATUS_LINE_ANSWERS.find(a => Object.values(TABLES).some(t => t[a.key] === text))?.surfaces ?? null
+}
 
 /** Whether a settings file's text configures a status line (`"statusLine": { "command": ... }`). Bad JSON: no. */
 export function hasStatusLine(text: string | null | undefined): boolean {

@@ -3,6 +3,7 @@
 //   account badge · account email · session title
 //   5H bar % ↻ reset · WEEK bar % / budget% ↻ reset
 // (budget = a share of the weekly limit per day, current day included; display only.)
+// A failed hook (the transcript records each one) adds a warning at the end of row 1; pressing it toasts the details.
 // Drawn on the desktop surface. In the terminal, `auto` steps aside for a status line the person already has and asks
 // once (the answer is saved as `surfaces`) whether to show both; desktop+terminal always draws there. Every hook is guarded: a failed lookup is logged to debug, never thrown.
 import { atom, read, update } from 'claude-code'
@@ -11,17 +12,19 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Info, Limit } from '../types'
 import { accountLabel, baseName, colorIndexOf, placeOf } from './account'
 import type { Place } from './account'
-import { STATUS_LINE_ANSWERS, STATUS_LINE_QUESTION, drawsOn, hasStatusLine, readConfig, statusLineFiles, surfacesForAnswer } from './config'
+import { STATUS_LINE_ANSWERS, drawsOn, hasStatusLine, readConfig, statusLineFiles, surfacesForAnswer } from './config'
 import type { Config } from './config'
 import {
   ACCOUNT_COLORS, NO_LIMIT, T, bar, countdown, fitText, levelColor, paceColor, prettyEffort, prettyModel, toLimit, weekBudget,
 } from './format'
-import { readLoginEmail, readTranscript } from './transcript'
+import { TABLES, languageFromSetting } from './i18n'
+import type { Lang, Strings } from './i18n'
+import { NO_HOOK_ERRORS, readLoginEmail, readTranscript } from './transcript'
 import type { Memo, NodeState } from './transcript'
 
 const EMPTY: Info = {
   repo: '', model: '', effort: null, ctx: null, five: NO_LIMIT, week: NO_LIMIT,
-  email: '', label: 'default', colorIndex: 0, title: '',
+  email: '', label: 'default', colorIndex: 0, title: '', hookErrors: NO_HOOK_ERRORS,
 }
 const TICK_MS = 60_000
 
@@ -30,6 +33,33 @@ const now = atom({ plugin: 'kit-statusbar', key: 'now' } as const, 0)
 // Whether a status line is configured for the terminal (auto mode then leaves the terminal to it); null: not looked
 // at yet (a fresh load, a /reload-plugins), and the terminal is left alone until it is.
 const statusLine = atom({ plugin: 'kit-statusbar', key: 'statusLine' } as const, null as boolean | null)
+
+// The band's language when `language` is auto: what the `language` setting said at session start; null: not looked at yet.
+const lang = atom({ plugin: 'kit-statusbar', key: 'lang' } as const, null as Lang | null)
+const TOAST_MS = 10_000
+
+/** Reads the `language` setting of Claude Code once; a failed read is English. */
+async function readLanguage($: EngineInterface): Promise<Lang> {
+  try {
+    return languageFromSetting(await $.settings.read({ key: 'language' }))
+  } catch (err) {
+    warn($, 'language setting not read', err)
+    return 'en'
+  }
+}
+
+/** The language to draw in: the option when it names one, else the one looked up at session start (looked up now if a reload skipped it). */
+async function languageOf($: EngineInterface, cfg: Config): Promise<Lang> {
+  if (cfg.language !== 'auto') return cfg.language
+  const known = await read($, lang)
+  return known === 'en' || known === 'vi' ? known : readLanguage($)
+}
+
+async function ensureLanguage($: EngineInterface, cfg: Config): Promise<void> {
+  if (cfg.language !== 'auto' || (await read($, lang)) !== null) return
+  const found = await readLanguage($)
+  await update($, lang, () => found)
+}
 
 const warn = ($: EngineInterface, what: string, err: unknown): void => $.ui.log(`${what}: ${String(err)}`, { to: 'debug' })
 
@@ -71,7 +101,8 @@ async function confirmBesideStatusLine($: EngineInterface, cfg: Config): Promise
   try {
     if (cfg.surfaces !== 'auto' || (await read($, statusLine)) !== true) return
     if (!(await $.session.surfaces()).includes('terminal')) return
-    const answer = await $.ui.ask(STATUS_LINE_QUESTION, { options: STATUS_LINE_ANSWERS.map(a => a.label), header: 'Status bar' })
+    const t = TABLES[await languageOf($, cfg)]
+    const answer = await $.ui.ask(t.statusLineQuestion, { options: STATUS_LINE_ANSWERS.map(a => t[a.key]), header: t.askHeader })
     const surfaces = surfacesForAnswer(answer)
     if (!surfaces) return
     const set = await $.config.set({ key: 'kit-statusbar.surfaces', value: surfaces })
@@ -92,17 +123,19 @@ async function refreshSession($: EngineInterface, cfg: Config, mem: Remembered):
       mem.lastId = id
       mem.memo = null
       mem.loginEmail = undefined
-      await update($, info, s => ({ ...s, title: '' }))
+      await update($, info, s => ({ ...s, title: '', hookErrors: NO_HOOK_ERRORS }))
     }
 
     let title = ''
     let email = ''
-    if (cfg.showTitle || cfg.showEmail) {
+    let hooks = NO_HOOK_ERRORS
+    if (cfg.showTitle || cfg.showEmail || cfg.showHookErrors) {
       const cwd = await $.session.cwd()
       const found = await readTranscript($, { configDir: place.configDir, id, cwd, maxMB: cfg.maxTranscriptMB }, mem.memo, mem.node)
       mem.memo = found.memo
       title = found.facts.title
       email = found.facts.email
+      hooks = found.facts.hooks
     }
     if (cfg.showEmail && !email) {
       mem.loginEmail ??= await readLoginEmail($, place.loginFile, mem.node)
@@ -115,6 +148,7 @@ async function refreshSession($: EngineInterface, cfg: Config, mem: Remembered):
       colorIndex: colorIndexOf(label),
       title: hasTranscript ? title : s.title,
       email: cfg.showEmail ? email : '',
+      hookErrors: !cfg.showHookErrors ? NO_HOOK_ERRORS : hasTranscript ? hooks : (s.hookErrors ?? NO_HOOK_ERRORS),
     }))
   } catch (err) {
     warn($, 'session lookup failed', err)
@@ -139,6 +173,8 @@ export const register: Register = (on, options) => {
         five: toLimit(usage?.rateLimits ?? [], 'five_hour'),
         week: toLimit(usage?.rateLimits ?? [], 'seven_day'),
       }))
+      if (cfg.language === 'auto') await update($, lang, () => null)
+      await ensureLanguage($, cfg)
       if (cfg.surfaces === 'auto') {
         await update($, statusLine, () => null)
         await ensureStatusLine($, cfg, started.cwd)
@@ -160,6 +196,7 @@ export const register: Register = (on, options) => {
   on('session.attach', async ($, e, next) => {
     const attached = await next(e)
     try { await ensureStatusLine($, cfg) } catch (err) { warn($, 'status line lookup failed', err) }
+    try { await ensureLanguage($, cfg) } catch (err) { warn($, 'language lookup failed', err) }
     await refreshSession($, cfg, mem)
     return attached
   })
@@ -200,6 +237,7 @@ export const register: Register = (on, options) => {
     const done = await next(e)
     if (e.agentId === undefined) {
       try { await ensureStatusLine($, cfg) } catch (err) { warn($, 'status line lookup failed', err) }
+      try { await ensureLanguage($, cfg) } catch (err) { warn($, 'language lookup failed', err) }
       await refreshSession($, cfg, mem)
     }
     return done
@@ -229,7 +267,8 @@ async function ownBand($: EngineInterface, e: any, next: (x: any) => Promise<any
       try { line = await detectStatusLine($, await $.session.cwd()) } catch (err) { warn($, 'status line lookup failed', err) }
     }
     if (!drawsOn(cfg, e.surface, line) || e.props.hasSurvey) return next(e)
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const t: Strings = TABLES[await languageOf($, cfg)]
     const s = await read($, info)
     const nowMs = (await read($, now)) || (await $.clock.now())
     const acc = ACCOUNT_COLORS[s.colorIndex % ACCOUNT_COLORS.length] ?? T.orange
@@ -261,31 +300,39 @@ async function ownBand($: EngineInterface, e: any, next: (x: any) => Promise<any
     }
 
     const email = cfg.showEmail ? s.email : ''
+    const account = s.label === 'default' ? t.defaultAccount : s.label
     // Whatever the badge and the email leave of the band's width is the title's; a longer one is cut short.
-    const room = (e.props.bodyColumns ?? Infinity) - (s.label.length + 2) - (email ? email.length + 1 : 0) - 1
+    const room = (e.props.bodyColumns ?? Infinity) - (account.length + 2) - (email ? email.length + 1 : 0) - 1
     const title = cfg.showTitle ? fitText(s.title, room) : ''
     // The limits row needs data: none (API key, a third-party provider) hides it.
     const showFive = cfg.showLimits && s.five.pct != null
     const showWeek = cfg.showLimits && s.week.pct != null
+    const failed = cfg.showHookErrors ? s.hookErrors : undefined
+    const lastFailure = failed && failed.count > 0 ? failed.last : null
 
     return (
       <Box flexDirection="column">
         <Box flexDirection="row" gap={1}>
-          {pill(T.blue, T.dark, s.repo || 'no-repo')}
-          {pill(T.hl2, T.cyan, s.model || 'model')}
+          {pill(T.blue, T.dark, s.repo || t.noRepo)}
+          {pill(T.hl2, T.cyan, s.model || t.modelFallback)}
           {s.effort ? pill(T.hl, T.magenta, s.effort) : null}
-          <Text color={T.comment} mono>ctx</Text>
+          <Text color={T.comment} mono>{t.context}</Text>
           {meter(s.ctx, levelColor(s.ctx, T.green))}
+          {failed && failed.count > 0 ? (
+            <Button key="hook-errors" onPress={() => { if (lastFailure) $.ui.toast(t.hookToast(lastFailure), { timeoutMs: TOAST_MS }) }}>
+              <Text color={T.yellow} weight="bold" mono>{t.hookErrors(failed.count, lastFailure?.hook ?? '')}</Text>
+            </Button>
+          ) : null}
         </Box>
         <Box flexDirection="row" gap={1}>
-          {pill(acc, T.dark, s.label)}
+          {pill(acc, T.dark, account)}
           {email ? <Text color={acc} weight="bold" mono>{email}</Text> : null}
           {title ? <Text color={T.comment} italic mono wrap="truncate-end">{title}</Text> : null}
         </Box>
         {showFive || showWeek ? (
           <Box flexDirection="row" gap={2}>
-            {showFive ? limit('5H', T.teal, s.five, false) : null}
-            {showWeek ? limit('WEEK', T.yellow, s.week, true) : null}
+            {showFive ? limit(t.fiveHour, T.teal, s.five, false) : null}
+            {showWeek ? limit(t.week, T.yellow, s.week, true) : null}
           </Box>
         ) : null}
       </Box>

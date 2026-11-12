@@ -1,4 +1,6 @@
-import type { Snapshot, Todo } from '../types'
+import type { Snapshot, Suggestion, Todo } from '../types'
+import { EN } from './i18n'
+import type { Strings } from './i18n'
 
 // Pure logic: no engine calls and no Node APIs, so everything here is unit-tested without an engine.
 
@@ -10,16 +12,8 @@ const MAX_SOON_DAYS = 30
 
 export type Status = 'over' | 'soon' | 'plan' | 'none' | 'done'
 
-/** Order of urgency, which is also the legend's order. */
-export const STATUSES: { id: Status; label: string }[] = [
-  { id: 'over', label: 'Overdue' },
-  { id: 'soon', label: 'Due soon' },
-  { id: 'plan', label: 'Scheduled' },
-  { id: 'none', label: 'No date' },
-  { id: 'done', label: 'Done' },
-]
-
-export const LABELS = { now: 'Do it now', draft: 'Draft', done: 'Done', open: 'Open list', hide: 'Hide today', more: 'Show more' } as const
+/** Order of urgency, which is also the legend's order. The words are in i18n.ts (`t.status`). */
+export const STATUSES: { id: Status }[] = [{ id: 'over' }, { id: 'soon' }, { id: 'plan' }, { id: 'none' }, { id: 'done' }]
 
 /** Anthropic brand palette (anthropics/skills brand-guidelines) plus one red; lighter twins for a dark terminal. */
 export const COLORS: Record<'light' | 'dark', Record<Status, string>> = {
@@ -28,8 +22,6 @@ export const COLORS: Record<'light' | 'dark', Record<Status, string>> = {
 }
 
 const DAY_MS = 86_400_000
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** Longest task text drawn in the band (cards and rows) and in the pane; longer text is cut with an ellipsis. */
 export const BAND_TEXT_MAX = 160
@@ -86,16 +78,16 @@ export function statusOf(todo: Todo, now: number, soonDays: number = DEFAULT_SOO
   return days < 0 ? 'over' : days <= soonDays ? 'soon' : 'plan'
 }
 
-/** "today, Mon Nov 9", "tomorrow, Tue Nov 10", "overdue 2 days (Sat Nov 7)", "Fri Nov 14". Fixed English names, no locale. */
-export function dueText(todo: Pick<Todo, 'due'>, now: number): string {
+/** English: "today, Mon Nov 9", "tomorrow, Tue Nov 10", "overdue 2 days (Sat Nov 7)", "Fri Nov 14". Fixed names, no locale. */
+export function dueText(todo: Pick<Todo, 'due'>, now: number, t: Strings = EN): string {
   const due = validDue(todo)
   if (!due) return ''
   const days = daysUntil(due, now)
   const [, m, d] = due.split('-')
-  const date = `${WEEKDAYS[new Date(`${due}T12:00:00Z`).getUTCDay()]} ${MONTHS[Number(m) - 1]} ${Number(d)}`
-  if (days < 0) return `overdue ${-days} ${days === -1 ? 'day' : 'days'} (${date})`
-  if (days === 0) return `today, ${date}`
-  if (days === 1) return `tomorrow, ${date}`
+  const date = t.dateText(new Date(`${due}T12:00:00Z`).getUTCDay(), Number(m), Number(d))
+  if (days < 0) return t.dueOverdue(-days, date)
+  if (days === 0) return t.dueToday(date)
+  if (days === 1) return t.dueTomorrow(date)
   return date
 }
 
@@ -179,11 +171,10 @@ export function recentlyDone(snap: Snapshot | null, now: number): Todo[] {
 }
 
 /** "3 tasks, 1 overdue": the most urgent count only. */
-export function countText(todos: Todo[], now: number, soonDays: number = DEFAULT_SOON_DAYS): string {
-  const over = todos.filter(t => statusOf(t, now, soonDays) === 'over').length
-  const soon = todos.filter(t => statusOf(t, now, soonDays) === 'soon').length
-  const extra = over ? `, ${over} overdue` : soon ? `, ${soon} due soon` : ''
-  return `${todos.length} ${todos.length === 1 ? 'task' : 'tasks'}${extra}`
+export function countText(todos: Todo[], now: number, soonDays: number = DEFAULT_SOON_DAYS, t: Strings = EN): string {
+  const over = todos.filter(x => statusOf(x, now, soonDays) === 'over').length
+  const soon = todos.filter(x => statusOf(x, now, soonDays) === 'soon').length
+  return t.count(todos.length, over, soon)
 }
 
 /** One line of at most `max` characters: whitespace runs become one space, a longer text ends in an ellipsis. */
@@ -315,9 +306,9 @@ export function textCells(text: string): number {
  * padding, the dot, the due date and the two buttons with the gaps between them take the rest. A text wider than this
  * is cut on screen, so "Do it now" drafts it for reading instead of sending.
  */
-export function listRowTextCells(cols: number, dueTextCells: number, withButtons: boolean): number {
+export function listRowTextCells(cols: number, dueTextCells: number, withButtons: boolean, t: Strings = EN): number {
   const inner = cols - 4
-  return Math.max(0, inner - 2 - (dueTextCells > 0 ? dueTextCells + 1 : 0) - (withButtons ? LIST_BUTTONS : 0))
+  return Math.max(0, inner - 2 - (dueTextCells > 0 ? dueTextCells + 1 : 0) - (withButtons ? listButtons(t) : 0))
 }
 
 /** What "Do it now" sends and "Draft" drafts. `file` is the todos file in use; an id outside SAFE_ID is quoted as JSON. */
@@ -382,11 +373,11 @@ export type BandPlan =
   | { mode: 'list'; shown: number; rowButtons: boolean; showMemory: boolean }
   | { mode: 'line' }
 
-const buttonsWidth = (...labels: string[]) => labels.reduce((n, l) => n + l.length + 4, labels.length - 1) // "[ label ]" and a space between
+const buttonsWidth = (...labels: string[]) => labels.reduce((n, l) => n + textCells(l) + 4, labels.length - 1) // "[ label ]" and a space between
 const CARD_MIN = 26 // narrowest card that still reads (cells, border included)
-const CARD_BUTTONS = buttonsWidth(LABELS.now, LABELS.draft)
-const LIST_BUTTONS = CARD_BUTTONS + 1 // the same two buttons at the end of a list row, one cell of gap before them
-const LEGEND = STATUSES.map(s => `● ${s.label}`).join('  ').length
+const cardButtons = (t: Strings) => buttonsWidth(t.buttons.now, t.buttons.draft)
+const listButtons = (t: Strings) => cardButtons(t) + 1 // the same two buttons at the end of a list row, one cell of gap before them
+const legendWidth = (t: Strings) => STATUSES.map(s => `● ${t.status[s.id]}`).join('  ').length
 
 // Word wrap wastes cells at line ends: plan for 85% of the width so an estimate never comes out short.
 // Wide characters count two cells, so a card of CJK text or emoji is not planned shorter than it draws.
@@ -394,31 +385,31 @@ const linesFor = (text: string, width: number) => Math.max(1, Math.ceil(textCell
 
 /** Rows one card takes at a given outer width. */
 /** Rows a band plan takes (what is left goes to the bands of other plugins beneath it). */
-export function planRows(plan: BandPlan, todos: Todo[]): number {
+export function planRows(plan: BandPlan, todos: Todo[], t: Strings = EN): number {
   if (plan.mode === 'line') return 1
   if (plan.mode === 'list') return 4 + plan.shown + (todos.length > plan.shown ? 1 : 0) + (plan.showMemory ? 1 : 0)
-  const tallest = Math.max(...todos.slice(0, plan.perRow).map(t => cardRows(t, plan.cardWidth)))
+  const tallest = Math.max(...todos.slice(0, plan.perRow).map(x => cardRows(x, plan.cardWidth, t)))
   return 2 + 1 + tallest + (todos.length > plan.perRow ? 1 : 0) + 1 + (plan.showLegend ? 1 : 0) + (plan.showMemory ? 1 : 0)
 }
 
-export function cardRows(todo: Todo, width: number): number {
+export function cardRows(todo: Todo, width: number, t: Strings = EN): number {
   const inner = width - 4 // border + paddingX 1 on each side
-  return 2 + 1 + linesFor(shortText(todo.text, BAND_TEXT_MAX), inner) + (validDue(todo) ? 1 : 0) + linesFor('x'.repeat(CARD_BUTTONS), inner)
+  return 2 + 1 + linesFor(shortText(todo.text, BAND_TEXT_MAX), inner) + (validDue(todo) ? 1 : 0) + linesFor('x'.repeat(cardButtons(t)), inner)
 }
 
 /**
  * The richest band layout whose height is at most `rows` (the engine's `maxRows`, so it never scrolls)
  * in `cols` cells (`bodyColumns`). Falls back cards -> one row per task -> a single line.
  */
-export function planBand(rows: number, cols: number, todos: Todo[]): BandPlan {
+export function planBand(rows: number, cols: number, todos: Todo[], t: Strings = EN): BandPlan {
   const inner = cols - 4 // the band's own border + padding
   const perRow = Math.min(3, todos.length, Math.floor((inner + 1) / (CARD_MIN + 1)))
   if (perRow >= 1) {
     const cardWidth = Math.floor((inner - (perRow - 1)) / perRow)
-    const tallest = Math.max(...todos.slice(0, perRow).map(t => cardRows(t, cardWidth)))
+    const tallest = Math.max(...todos.slice(0, perRow).map(x => cardRows(x, cardWidth, t)))
     const more = todos.length > perRow ? 1 : 0
     const base = 2 + 1 + tallest + more + 1 // border, header, cards, "N more", actions
-    const legendRows = linesFor('x'.repeat(LEGEND), inner)
+    const legendRows = linesFor('x'.repeat(legendWidth(t)), inner)
     if (base + legendRows + 1 <= rows) return { mode: 'cards', perRow, cardWidth, showLegend: true, showMemory: true }
     if (base <= rows) return { mode: 'cards', perRow, cardWidth, showLegend: false, showMemory: false }
   }
@@ -427,7 +418,90 @@ export function planBand(rows: number, cols: number, todos: Todo[]): BandPlan {
     // Reserve one row for "N more" when not every task fits.
     const shown = todos.length <= room ? todos.length : Math.max(1, room - 1)
     const showMemory = shown === todos.length && room > shown
-    return { mode: 'list', shown, rowButtons: inner >= 40 + LIST_BUTTONS, showMemory }
+    return { mode: 'list', shown, rowButtons: inner >= 40 + listButtons(t), showMemory }
   }
   return { mode: 'line' }
+}
+
+// --- suggestions from Claude -----------------------------------------------------------------------------------
+
+/** Longest suggested task, longest note, and how many suggestions may wait for the person at once. */
+export const SUGGESTION_TEXT_MAX = 200
+export const SUGGESTION_NOTE_MAX = 300
+export const SUGGESTIONS_MAX = 10
+
+const HIDDEN_CHARS_ALL = new RegExp(HIDDEN_CHARS.source, 'gu')
+
+/** The text without the characters a card does not show plainly (control, zero-width, bidi, tag characters). */
+export const stripHidden = (text: string): string => text.replace(HIDDEN_CHARS_ALL, '')
+
+export type Proposal = Omit<Suggestion, 'id'>
+
+/**
+ * What the model sent to propose_todo, checked and cleaned. The result is exactly what the card shows and what a
+ * click on Add saves: hidden characters are removed, runs of white space become one space, and a text is one line of
+ * 1 to 200 characters. `due` must be a real YYYY-MM-DD day; `note` (300 characters at most) is optional. A refusal
+ * says what to fix; it is written for the model, so it stays in English.
+ */
+export function checkProposal(input: Record<string, unknown>): { ok: true; proposal: Proposal } | { ok: false; why: string } {
+  const raw = input.text
+  if (typeof raw !== 'string') return { ok: false, why: 'text is required: one task as a short string.' }
+  const trimmed = stripHidden(raw).trim()
+  if (LINE_BREAKS.test(trimmed)) return { ok: false, why: 'text must be a single line. Put extra detail in note, and propose one task per call.' }
+  const text = trimmed.replace(/\s+/g, ' ')
+  if (!text) return { ok: false, why: 'text is empty. Say in one line what the task is.' }
+  const length = [...text].length
+  if (length > SUGGESTION_TEXT_MAX) return { ok: false, why: `text is ${length} characters; the limit is ${SUGGESTION_TEXT_MAX}. Shorten it and put detail in note.` }
+  const proposal: Proposal = { text }
+  if (input.due !== undefined && input.due !== null && input.due !== '') {
+    const due = typeof input.due === 'string' ? validDue({ due: input.due.trim() }) : undefined
+    if (!due) return { ok: false, why: 'due must be a real day written YYYY-MM-DD (for example 2026-11-30), or left out.' }
+    proposal.due = due
+  }
+  if (input.note !== undefined && input.note !== null && input.note !== '') {
+    if (typeof input.note !== 'string') return { ok: false, why: 'note must be a string, or left out.' }
+    const note = stripHidden(input.note).replace(/\s+/g, ' ').trim()
+    const noteLength = [...note].length
+    if (noteLength > SUGGESTION_NOTE_MAX) return { ok: false, why: `note is ${noteLength} characters; the limit is ${SUGGESTION_NOTE_MAX}. Shorten it.` }
+    if (note) proposal.note = note
+  }
+  return { ok: true, proposal }
+}
+
+/** The pending list with the proposal appended, unless one with the same text (ignoring case) waits or the list is full. */
+export function addSuggestion(list: Suggestion[], proposal: Proposal, id: string): { list: Suggestion[]; status: 'added' | 'duplicate' | 'full' } {
+  const key = proposal.text.toLowerCase()
+  if (list.some(s => s.text.toLowerCase() === key)) return { list, status: 'duplicate' }
+  if (list.length >= SUGGESTIONS_MAX) return { list, status: 'full' }
+  return { list: [...list, { id, ...proposal }], status: 'added' }
+}
+
+/** Rows one suggestion takes in the band: its line (text, date) beside the two buttons, and the note under it. */
+export function suggestionRows(s: Suggestion, cols: number, now: number, t: Strings = EN): number {
+  const inner = cols - 4
+  const line = `${t.suggests}${s.text}${validDue(s) ? ` (${dueText(s, now, t)})` : ''}`
+  const lineRows = linesFor(line, inner - buttonsWidth(t.buttons.add, t.buttons.dismiss) - 1)
+  return lineRows + (s.note ? linesFor(`${t.noteLabel}${s.note}`, inner) : 0)
+}
+
+export type SuggestionPlan = { mode: 'box'; shown: number; rows: number } | { mode: 'line'; rows: 1 } | { mode: 'none'; rows: 0 }
+
+/**
+ * How the band shows pending suggestions in `rows` rows (`maxRows`) of `cols` cells. A box lists as many as fit, whole
+ * (the buttons only sit where the whole text is on screen), with a "N more" row when some wait; with tasks to show too
+ * it takes at most half the room. When not even the first fits, one line says how many wait.
+ */
+export function planSuggestions(rows: number, cols: number, pending: Suggestion[], hasTasks: boolean, now: number, t: Strings = EN): SuggestionPlan {
+  if (!pending.length || rows < 1) return { mode: 'none', rows: 0 }
+  const room = hasTasks ? Math.floor(rows / 2) : rows
+  let used = 2 // the box's border
+  let shown = 0
+  for (const [i, s] of pending.entries()) {
+    const next = used + suggestionRows(s, cols, now, t)
+    if (next + (i + 1 < pending.length ? 1 : 0) > room) break
+    used = next
+    shown += 1
+  }
+  if (shown === 0) return room >= 1 ? { mode: 'line', rows: 1 } : { mode: 'none', rows: 0 }
+  return { mode: 'box', shown, rows: used + (shown < pending.length ? 1 : 0) }
 }

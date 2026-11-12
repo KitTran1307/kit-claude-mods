@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Optional helper of the kit-statusbar plugin, for what the plugin cannot read by itself: a session transcript or a
 // login record over 4 MB. Plain Node, no dependencies; Windows, macOS and Linux. Prints one JSON object:
-//   {"title","transcriptEmail","loginEmail","email","transcript"}   (a missing value is "")
+//   {"title","transcriptEmail","loginEmail","email","transcript","hookErrors"}   (a missing value is "")
 //
 //   node session-info.mjs --transcript FILE [--tail-mb N] [--login-file FILE]
 //   node session-info.mjs --session ID [--cwd DIR] [--config-dir DIR] [--tail-mb N] [--login-file FILE]
@@ -12,6 +12,8 @@
 // loginEmail: oauthAccount.emailAddress of the login record: --login-file, or with --session the config
 //   directory's own: <CLAUDE_CONFIG_DIR>/.claude.json when that is set, else <home>/.claude.json.
 // email: transcriptEmail, else loginEmail.
+// hookErrors: {"count","last"}, the hook failures (hook_non_blocking_error / hook_blocking_error entries) in the same
+//   window; last is null or {"hook","command","reason"}. Same rules as hookErrors() in hooks/transcript.ts.
 // --session finds the transcript at <config dir>/projects/<project>/<ID>.jsonl; the config dir is --config-dir,
 //   else CLAUDE_CONFIG_DIR, else <home>/.claude. With --cwd the project folder is tried first, then every folder.
 // The title and email rules are the same as hooks/transcript.ts.
@@ -101,6 +103,58 @@ function transcriptEmail(text) {
   return /^[\w.+-]+@[\w-]+(?:\.[\w-]+)+/.exec(text.slice(from, from + 320))?.[0] ?? "";
 }
 
+// ---- hook failures (same rules as hooks/transcript.ts) ----
+const HOOK_ERROR_TYPES = ["hook_non_blocking_error", "hook_blocking_error"];
+const str = (v) => (typeof v === "string" ? v.trim() : "");
+const record = (v) => (v !== null && typeof v === "object" ? v : null);
+
+// One line of at most `room` characters, cut with an ellipsis.
+function fitText(value, room) {
+  const chars = [...value.replace(/\s+/g, " ").trim()];
+  if (room < 4) return "";
+  return chars.length <= room ? chars.join("") : `${chars.slice(0, room - 1).join("")}…`;
+}
+
+// A stack trace starts with where it was thrown; the line naming the error is the one worth showing.
+const CAUSE = /\b(?:\w*Error|error|No such file|not found|Cannot|ENOENT|EACCES|denied|does not exist)\b/i;
+
+function hookFailure(att) {
+  const nested = record(att.blockingError);
+  const raw = str(att.stderr) || str(att.content) || str(nested?.blockingError) || str(att.blockingError) || str(att.output) || str(att.message);
+  const lines = raw.replace(/^Failed with non-blocking status code:\s*/i, "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const firstLine = lines.find((l) => CAUSE.test(l)) ?? lines[0] ?? "";
+  return {
+    hook: str(att.hookName) || str(att.hookEvent) || str(att.hook_event_name),
+    command: fitText(str(att.command) || str(nested?.command), 60),
+    reason: fitText(firstLine.replace(/^Failed with non-blocking status code:\s*/i, ""), 80),
+  };
+}
+
+function hookErrors(text) {
+  const seen = new Set();
+  let count = 0;
+  let lastAt = -1;
+  let last = null;
+  for (const type of HOOK_ERROR_TYPES) {
+    const key = `"type":"${type}"`;
+    for (let at = text.indexOf(key); at >= 0; at = text.indexOf(key, at + key.length)) {
+      const start = text.lastIndexOf("\n", at) + 1;
+      if (seen.has(start)) continue;
+      seen.add(start);
+      const end = text.indexOf("\n", at);
+      const entry = parseObject(text.slice(start, end < 0 ? undefined : end));
+      const att = record(entry?.attachment) ?? entry;
+      if (!att || !HOOK_ERROR_TYPES.includes(att.type)) continue;
+      count += 1;
+      if (start > lastAt) {
+        lastAt = start;
+        last = hookFailure(att);
+      }
+    }
+  }
+  return { count, last };
+}
+
 function loginEmail(file) {
   try {
     const email = JSON.parse(readFileSync(file, "utf8"))?.oauthAccount?.emailAddress;
@@ -157,5 +211,6 @@ process.stdout.write(
     loginEmail: fromLogin,
     email: fromTranscript || fromLogin,
     transcript,
+    hookErrors: hookErrors(text),
   }),
 );

@@ -19,6 +19,11 @@ this plugin adds one: three rows in the Tokyo Night colors that show where you a
    daily budget (`/ 56%`): the share of the week you planned to have used by today, current day included, at 14% a
    day by default.
 
+When a hook fails in the session (a script that no longer exists, a plugin folder that was deleted), Claude Code only
+logs it quietly, so the band adds a yellow warning at the end of the first row, for example `⚠ 3 hook errors (Stop)`.
+Press it to see the hook that failed last, its command and why. The count is read from the session's own transcript
+and starts again with every new session.
+
 Colors tell you the pace: a bar turns yellow from 70% and red from 90%; the weekly bar also turns yellow when you are
 above your daily budget and red when you are a full day's budget over it.
 
@@ -68,11 +73,13 @@ A plugin installed from a terminal at the user scope also loads in the local ses
 | Option | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `surfaces` | `auto`, `desktop` or `desktop+terminal` | `auto` | Where the band is drawn. `auto`: the desktop app, and the terminal when no status line is set up there (with one, it asks once and saves your answer here). `desktop`: the desktop app only. `desktop+terminal`: both, always. |
+| `language` | `auto`, `en` or `vi` | `auto` | The language of the band's words (labels, the hook warning, the once-asked status line question). `auto`: Vietnamese when Claude Code's own `language` setting is Vietnamese (looked up once at session start), English otherwise. `en` or `vi` forces one. Model names, repository names, numbers and units such as `2h13m` stay as they are. |
 | `weeklyBudgetPerDay` | number | `14` | Share of the weekly limit planned per day, shown as `/ 56%` next to the weekly bar. 0 or less hides the budget. |
 | `showEmail` | true or false | `true` | Show the account email. The email and the session title can end up in screenshots and shared screens: turn it off before you share your screen; the plugin then does not look the email up at all. |
 | `showTitle` | true or false | `true` | Show the session title. Turn it off too when the title could say more than you want on a shared screen. |
 | `showLimits` | true or false | `true` | Show the 5-hour and weekly row. It also hides itself when there is no limit data (an API key, a third-party provider). |
-| `maxTranscriptMB` | number | `8` | How much of the session transcript is looked at to find the title. The plugin reads up to 4 MB itself; a larger transcript is read from its end by the Node helper, up to this many MB. |
+| `showHookErrors` | true or false | `true` | Show the failing-hooks warning. Turn it off and the plugin does not look for hook failures in the transcript. |
+| `maxTranscriptMB` | number | `8` | How much of the session transcript is looked at to find the title and the hook failures. The plugin reads up to 4 MB itself; a larger transcript is read from its end by the Node helper, up to this many MB. |
 
 Set them in any of these ways:
 
@@ -120,12 +127,14 @@ The plugin sends nothing anywhere. It makes no network requests. To fill the ban
 machine:
 
 - this session's own transcript (`<config folder>/projects/<project>/<session id>.jsonl`), only to find the session
-  title and the account email in it;
+  title, the account email and the hook failures in it;
 - the local login record (`.claude.json`: in the config folder when `CLAUDE_CONFIG_DIR` is set, otherwise in your home
   folder), only for `oauthAccount.emailAddress`, and only when the transcript does not name the account.
 
 The optional Node helper (`scripts/session-info.mjs`) is a small program that does the same reading for files too big
-for the plugin; it runs locally and prints only the title and the email back to the plugin.
+for the plugin; it runs locally and prints only the title, the email and the hook failure summary (count, hook name, command, first line of the reason) back
+to the plugin. For a transcript that large the failures counted are those in the part it reads, the last `maxTranscriptMB`
+MB.
 
 ## Troubleshooting
 
@@ -138,6 +147,12 @@ for the plugin; it runs locally and prints only the title and the email back to 
   keys or third-party providers. It appears after the first response if your plan has limits. `showLimits` must be on.
 - **No session title.** A new session has none until its first answer. A very long session (transcript over 4 MB)
   needs Node.js installed for the title to update; without it the last known title stays.
+- **A hook warning in the band.** The session's transcript records a hook that failed; press the warning to see which
+  one. The usual causes are a hook command pointing at a script that was moved or deleted, or a hook of a plugin that
+  was uninstalled. Fix or remove the hook in `settings.json` or the plugin; the count stays for the rest of the session.
+  Turn the warning off with `showHookErrors: false`.
+- **The band is in the wrong language.** `language: auto` follows Claude Code's `language` setting, read once when the
+  session starts; set `language` to `en` or `vi` to choose directly.
 - **No email, or the wrong one.** Without a login record the plugin has nothing to show, so no email appears. Check
   `showEmail`, and check which config folder the session uses (`CLAUDE_CONFIG_DIR`).
 - **Something else.** Start Claude Code with `claude --debug`: the plugin logs each lookup that fails there, and never
@@ -163,4 +178,5 @@ node --test scripts/
 ```
 
 `hooks/register.tsx` holds the hooks and the drawing; `hooks/format.ts`, `account.ts`, `config.ts` and
-`transcript.ts` hold the pure helpers and the file lookups. `scripts/session-info.mjs` is the optional Node helper.
+`transcript.ts` hold the pure helpers and the file lookups; `hooks/i18n.ts` holds every word the band shows in English
+and Vietnamese (both tables have the same keys, so a missing translation fails `tsc`). `scripts/session-info.mjs` is the optional Node helper.

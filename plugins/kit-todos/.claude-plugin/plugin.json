@@ -1,7 +1,7 @@
 {
   "name": "kit-todos",
-  "version": "1.3.0",
-  "description": "Your open to-do tasks for the current project in a band above the prompt, with one-press buttons to hand a task to Claude, plus a pane, a /todo command and the project's latest memories.",
+  "version": "1.4.0",
+  "description": "Your open to-do tasks for the current project in a band above the prompt, with one-press buttons to hand a task to Claude, plus a pane, a /todo command, the project's latest memories, tasks Claude suggests for you to approve, and a Vietnamese interface.",
   "author": {
     "name": "Kit Tran",
     "url": "https://github.com/KitTran1307"
@@ -47,6 +47,23 @@
       "title": "Look for memories in every account profile",
       "description": "Off: only the current profile's memories (CLAUDE_CONFIG_DIR, else ~/.claude). On: also ~/.claude and every ~/.claude-* profile, newest wins, so another account's memories can show in this session.",
       "default": false
+    },
+    "allowSuggestions": {
+      "type": "boolean",
+      "title": "Let Claude suggest tasks",
+      "description": "On: Claude gets a tool to propose follow-up tasks (work it found but is not doing now). They wait in the band as \"Claude suggests\" with Add and Dismiss, and nothing is saved until you add one. Off: Claude gets no such tool.",
+      "default": true
+    },
+    "language": {
+      "type": "string",
+      "title": "Language of the band, pane and /todo",
+      "description": "auto: Vietnamese when Claude Code's own language setting is Vietnamese, English otherwise (looked up once at session start). en: always English. vi: always Vietnamese (Tiếng Việt). The prompt that Do it now and Draft send to Claude stays English.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "en",
+        "vi"
+      ]
     }
   }
 }

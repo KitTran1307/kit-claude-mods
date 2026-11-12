@@ -353,6 +353,8 @@ type World = {
   model?: string
   /** What `node session-info.mjs` answers: JSON text, or 'missing' when Node cannot be started. */
   helper?: string | 'missing'
+  /** The `language` setting of Claude Code: a value, or 'error' when the settings cannot be read. */
+  language?: unknown
 }
 
 // The engine beneath the plugin: environment, files, session facts, clock, a Node helper. Returns what it saw.
@@ -363,7 +365,7 @@ function world(on: On, w: World = {}) {
   const sawStats: string[] = []
   const sawRuns: string[][] = []
   const logs: string[] = []
-  const state = { id: SID, surfaces: w.surfaces ?? ['desktop'] }
+  const state = { id: SID, surfaces: w.surfaces ?? ['desktop'], settingsReads: 0 }
   // Paths compare without a drive letter: a test host that resolves /home/ann against its own drive still matches,
   // and a POSIX host that takes C:\... as a relative path (prefixing its own folder) still finds the Windows path.
   const norm = (p: string) => {
@@ -393,6 +395,11 @@ function world(on: On, w: World = {}) {
   on('session.attach', (_, e) => ({ clientId: e.clientId }))
   on('turn.complete', () => ({ text: '' }))
   on('ui.log', (_, e) => { logs.push(e.text); return { value: undefined } })
+  on('settings.read', () => {
+    state.settingsReads += 1
+    if (w.language === 'error') return { deny: 'settings are not readable' } as never
+    return { value: (w.language === undefined ? {} : { language: w.language }) as never }
+  })
 
   on('fs.stat', (_, e) => {
     const path = norm(e.path)
@@ -645,7 +652,7 @@ test('with CLAUDE_CONFIG_DIR set only its own login record is read', async ($, o
   expect(seen.sawReads.includes('/home/ann/.claude.json')).toBe(false)
 })
 
-test('showEmail=false: the login record and the transcript email are never looked up for display', { options: { showEmail: false, showTitle: false } }, async ($, on) => {
+test('showEmail=false: the login record and the transcript email are never looked up for display', { options: { showEmail: false, showTitle: false, showHookErrors: false } }, async ($, on) => {
   const seen = world(on, { files: { '/home/ann/.claude.json': LOGIN('ann@example.com'), [TRANSCRIPT]: ctxEmail('ann@example.com') } })
   await start($)
   expect((await band($)).text).not.toContain('@')
@@ -863,4 +870,159 @@ test('a desktop attaching later brings the title and email in', { options: { sur
   seen.state.surfaces = ['terminal', 'desktop']
   await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' })
   expect((await band($)).text).toContain('After attach')
+})
+
+// ---------- failing hooks ----------
+const hookFail = (o: object = {}, type = 'hook_non_blocking_error') => row({ type: 'attachment', attachment: { type, ...o }, timestamp: '2026-11-12T08:00:00Z' })
+const STOP_FAIL = { hookName: 'Stop', command: 'bash scripts/x.sh', stderr: 'Failed with non-blocking status code: bash: scripts/x.sh: No such file or directory' }
+const WARNING = /⚠/
+
+test('failed hooks: the band warns with their number and the hook that failed last', async ($, on) => {
+  world(on, { files: { [TRANSCRIPT]: aiTitle('T') + hookFail(STOP_FAIL) + hookFail({ ...STOP_FAIL, hookName: 'PreToolUse' }) + hookFail(STOP_FAIL) } })
+  await start($)
+  const { all } = await band($)
+  expect(all).toContain('⚠ 3 hook errors (Stop)')
+})
+
+test('failed hooks: one failure reads in the singular; none shows no warning', async ($, on) => {
+  const seen = world(on, { files: { [TRANSCRIPT]: aiTitle('T') + hookFail(STOP_FAIL) } })
+  await start($)
+  expect((await band($)).all).toContain('⚠ 1 hook error (Stop)')
+  seen.put(TRANSCRIPT, { text: aiTitle('T'), mtimeMs: 5 })
+  await finishTurn($)
+  expect((await band($)).text).not.toMatch(WARNING)
+})
+
+test('failed hooks: text quoting a failure inside a message is not a failure', async ($, on) => {
+  const quoted = row({ type: 'user', message: { content: 'see {"type":"attachment","attachment":{"type":"hook_non_blocking_error"}}' } })
+  world(on, { files: { [TRANSCRIPT]: aiTitle('T') + quoted } })
+  await start($)
+  expect((await band($)).text).not.toMatch(WARNING)
+})
+
+test('failed hooks: showHookErrors=false hides the warning', { options: { showHookErrors: false } }, async ($, on) => {
+  world(on, { files: { [TRANSCRIPT]: aiTitle('T') + hookFail(STOP_FAIL) } })
+  await start($)
+  const { text } = await band($)
+  expect(text).not.toMatch(WARNING)
+  expect(text).toContain('T')
+})
+
+test('failed hooks: showHookErrors=false hides what the stored state holds too', { options: { showHookErrors: false } }, async ($, on) => {
+  seed(on, { ...INFO, hookErrors: { count: 2, last: { hook: 'Stop', command: 'x', reason: 'y' } } })
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect((await shown(ui)).join('|')).not.toMatch(WARNING)
+  await ui.unmount()
+})
+
+test('failed hooks: the warning comes from the one read of the transcript that finds the title', async ($, on) => {
+  const seen = world(on, { files: { [TRANSCRIPT]: { text: aiTitle('T') + hookFail(STOP_FAIL), mtimeMs: 1 } } })
+  await start($)
+  await band($)
+  await band($)
+  expect(seen.sawReads).toEqual([TRANSCRIPT])
+  await finishTurn($)
+  expect(seen.sawReads).toEqual([TRANSCRIPT]) // unchanged file: nothing read again
+})
+
+test('failed hooks: pressing the warning toasts the hook, the command and the reason', async ($, on) => {
+  world(on, { files: { [TRANSCRIPT]: aiTitle('T') + hookFail(STOP_FAIL) } })
+  const toasts: string[] = []
+  on('ui.toast', (_: unknown, e: any) => { toasts.push(String(e.text)); return { value: undefined } })
+  await start($)
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await ui.find({ type: 'Button', key: 'hook-errors' })).toBeDefined()
+  await ui.press({ key: 'hook-errors' })
+  await ui.unmount()
+  expect(toasts).toEqual(['Stop hook failed · bash scripts/x.sh · bash: scripts/x.sh: No such file or directory'])
+})
+
+test('failed hooks: a transcript over the limit gets its count from the Node helper', async ($, on) => {
+  world(on, {
+    files: { [TRANSCRIPT]: { text: 'never read here', size: 9 * MIB } },
+    helper: JSON.stringify({ title: 'Big', hookErrors: { count: 4, last: { hook: 'SessionStart', command: 'node gone.js', reason: 'Cannot find module' } } }),
+  })
+  await start($)
+  expect((await band($)).all).toContain('⚠ 4 hook errors (SessionStart)')
+})
+
+test('failed hooks: a helper that does not know the field keeps the last count', async ($, on) => {
+  const seen = world(on, {
+    files: { [TRANSCRIPT]: { text: aiTitle('T') + hookFail(STOP_FAIL), mtimeMs: 1 } },
+    helper: JSON.stringify({ title: 'Big' }),
+  })
+  await start($)
+  seen.put(TRANSCRIPT, { text: '', size: 9 * MIB, mtimeMs: 2 })
+  await finishTurn($)
+  expect((await band($)).all).toContain('⚠ 1 hook error (Stop)')
+})
+
+test('failed hooks: a /clear starts a new session with no failures', async ($, on) => {
+  const seen = world(on, { files: { [TRANSCRIPT]: aiTitle('T') + hookFail(STOP_FAIL) } })
+  await start($)
+  expect((await band($)).text).toMatch(WARNING)
+  seen.state.id = '11111111-2222-4333-8444-555566667777'
+  await finishTurn($)
+  expect((await band($)).text).not.toMatch(WARNING)
+})
+
+// ---------- language ----------
+const LIMITS = [
+  { kind: 'five_hour', percentUsed: 30, resetsAt: AT(NOW + 133 * 60_000) },
+  { kind: 'seven_day', percentUsed: 12, resetsAt: AT(NOW + 6.5 * 86_400_000) },
+]
+const VI_WORDS = ['ngữ cảnh', '5 GIỜ', 'TUẦN', 'mặc định']
+
+test('language auto: a Vietnamese Claude Code setting draws the band in Vietnamese; the numbers and names stay', async ($, on) => {
+  world(on, { language: 'Vietnamese', rateLimits: LIMITS, ctx: 42, files: { [TRANSCRIPT]: aiTitle('T') + hookFail(STOP_FAIL) + hookFail(STOP_FAIL) } })
+  await start($)
+  const { text, all } = await band($)
+  for (const word of VI_WORDS) expect(text).toContain(word)
+  expect(all).toContain('⚠ 2 lỗi hook (Stop)')
+  for (const kept of ['notes', 'Opus 5.5', '42%', '30%', '↻ 2h13m']) expect(text).toContain(kept)
+  for (const gone of ['ctx', '5H', 'WEEK', 'default']) expect(text).not.toContain(gone)
+})
+
+for (const language of ['English', undefined, 'error', 42]) {
+  test(`language auto: the setting ${String(language)} draws English`, async ($, on) => {
+    world(on, { language, rateLimits: LIMITS })
+    await start($)
+    const { text } = await band($)
+    for (const word of ['ctx', '5H', 'WEEK', 'default']) expect(text).toContain(word)
+    for (const word of VI_WORDS) expect(text).not.toContain(word)
+  })
+}
+
+test('language auto: the setting is read once at session start, not on every draw', async ($, on) => {
+  const seen = world(on, { language: 'vi' })
+  await start($)
+  await band($)
+  await band($)
+  await finishTurn($)
+  expect(seen.state.settingsReads).toBe(1)
+})
+
+test('language=vi draws Vietnamese whatever the setting says', { options: { language: 'vi' } }, async ($, on) => {
+  world(on, { language: 'English', rateLimits: LIMITS })
+  await start($)
+  const { text } = await band($)
+  for (const word of VI_WORDS) expect(text).toContain(word)
+})
+
+test('language=en draws English even when the setting is Vietnamese', { options: { language: 'en' } }, async ($, on) => {
+  world(on, { language: 'Vietnamese', rateLimits: LIMITS })
+  await start($)
+  const { text } = await band($)
+  expect(text).toContain('5H')
+  expect(text).not.toContain('TUẦN')
+})
+
+test('language: the status line question is asked in Vietnamese and its answer saves surfaces', { options: { language: 'vi' } }, async ($, on) => {
+  world(on, { surfaces: ['terminal'], files: { '/home/ann/.claude/settings.json': STATUS_LINE } })
+  const seen = asks(on, 'Hiện cả hai')
+  await start($)
+  await settle()
+  expect(seen.asked).toHaveLength(1)
+  expect(seen.asked[0]).toMatch(/đã có status line/)
+  expect(seen.set).toEqual([{ key: 'kit-statusbar.surfaces', value: 'desktop+terminal' }])
 })

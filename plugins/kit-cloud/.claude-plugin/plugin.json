@@ -1,6 +1,6 @@
 {
   "name": "kit-cloud",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "description": "See your Claude Code cloud sessions above the prompt: working, asking, PR open, CI failed or silent, with a link to each. The band for kit-cloud-pilot, which tracks them.",
   "author": {
     "name": "Kit Tran",
@@ -43,8 +43,14 @@
     },
     "notifications": {
       "type": "boolean",
-      "title": "Desktop notifications",
-      "description": "Let KIT Hub show a system notification when a session needs you and no Claude session is open for it.",
+      "title": "Desktop notifications (no session open)",
+      "description": "Let the cloud-pilot hub show a system notification when a session needs you and no Claude session is open for it. Applies to tracks registered after you change it. While a session is open, see \"Notify in this session\".",
+      "default": true
+    },
+    "notifyInSession": {
+      "type": "boolean",
+      "title": "Notify in this session",
+      "description": "While this Claude session is open, show a message and a notification when a cloud session starts asking you a question, opens a PR, fails CI, goes silent or finishes.",
       "default": true
     },
     "deleteMergedBranches": {
@@ -52,6 +58,17 @@
       "title": "Delete merged claude/* branches",
       "description": "After a tracked PR merges, delete its claude/* branch on GitHub, only while the branch still points at the merged commit.",
       "default": false
+    },
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "description": "auto: follow Claude Code's own language setting (Vietnamese when it is set to Vietnamese, English otherwise). Or force en or vi. Read when a session starts.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "en",
+        "vi"
+      ]
     }
   },
   "dependencies": [

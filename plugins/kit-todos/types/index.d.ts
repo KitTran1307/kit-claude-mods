@@ -18,6 +18,16 @@ export type Todo = {
 }
 /** One line of the numbered /todo list: the entry it named and its text. */
 export type Shown = { id: string; index: number; text: string }
+/** A task Claude proposed with propose_todo that waits for the person; saved only when they add it. Held in the session, not in the file. */
+export type Suggestion = {
+  id: string
+  /** One line, 200 characters at most, cleaned of hidden characters: exactly what the card shows and Add saves. */
+  text: string
+  /** A real YYYY-MM-DD day. */
+  due?: string
+  /** One line, 300 characters at most. */
+  note?: string
+}
 export type Memory = { title: string; hook: string; file: string; mtimeMs: number }
 export type Snapshot = {
   todos: Todo[]
@@ -31,6 +41,10 @@ export type Snapshot = {
 }
 
 declare module 'claude-code' {
+  /** The model tool Claude proposes a task with (registered at session start unless allowSuggestions is off). */
+  interface McpToolInputs {
+    'mcp__kit-todos__propose_todo': { text: string; due?: string; note?: string }
+  }
   interface PluginState {
     'kit-todos': {
       hiddenDay: string | null
@@ -39,6 +53,10 @@ declare module 'claude-code' {
       shown: Shown[] | null
       /** Open tasks the pane draws; "Show more" raises it. */
       paneLimit: number
+      /** Tasks Claude proposed that the person has not added or dismissed yet (10 at most). */
+      suggestions: Suggestion[]
+      /** Ids of the suggestions the last /todo suggestions printed, so /todo accept <n> adds what was seen. */
+      suggestionsShown: string[] | null
     }
   }
 }

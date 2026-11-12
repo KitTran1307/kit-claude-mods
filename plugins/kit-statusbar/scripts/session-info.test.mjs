@@ -149,3 +149,47 @@ test("no arguments is a usage error", () => {
   assert.equal(res.status, 2);
   assert.match(res.stderr, /usage/);
 });
+
+const hookLine = (extra = {}, type = "hook_non_blocking_error") =>
+  line({ type: "attachment", attachment: { type, hookName: "Stop", command: "bash scripts/x.sh", stderr: "Failed with non-blocking status code: bash: scripts/x.sh: No such file or directory", ...extra } });
+
+test("hookErrors: none in a transcript without failures", () => {
+  const { file } = makeConfig("hooks-none", userLine("hello") + line({ type: "attachment", attachment: { type: "hook_success" } }));
+  assert.deepEqual(run(["--transcript", file]).hookErrors, { count: 0, last: null });
+});
+
+test("hookErrors: counts both kinds and reports the latest, with a short command and the first line of the reason", () => {
+  const { file } = makeConfig(
+    "hooks-many",
+    hookLine() + userLine("x") + hookLine({ hookName: "PreToolUse" }) + hookLine({ hookName: undefined, hookEvent: "SessionStart", command: "node gone.js", stderr: undefined, content: "Cannot find module\nat line 2" }, "hook_blocking_error"),
+  );
+  assert.deepEqual(run(["--transcript", file]).hookErrors, {
+    count: 3,
+    last: { hook: "SessionStart", command: "node gone.js", reason: "Cannot find module" },
+  });
+  const one = makeConfig("hooks-one", hookLine({ command: `node ${"x".repeat(200)}` })).file;
+  const last = run(["--transcript", one]).hookErrors.last;
+  assert.equal(last.command.length, 60);
+  assert.equal(last.reason, "bash: scripts/x.sh: No such file or directory");
+});
+
+test("hookErrors: quoted text and a line cut short never count", () => {
+  const quoted = userLine('see {"type":"hook_non_blocking_error","hookName":"Fake"} and {"type":"hook_blocking_error"}');
+  assert.ok(quoted.includes('\\"type\\":\\"hook_non_blocking_error\\"'));
+  const cut = '{"type":"attachment","attachment":{"type":"hook_non_blocking_error","hookName":"Cu';
+  assert.equal(run(["--transcript", makeConfig("hooks-quoted", quoted).file]).hookErrors.count, 0);
+  const out = run(["--transcript", makeConfig("hooks-cut", hookLine() + quoted + cut).file]).hookErrors;
+  assert.equal(out.count, 1);
+  assert.equal(out.last.hook, "Stop");
+});
+
+test("hookErrors: only the --tail-mb window is counted; the other fields are unchanged", () => {
+  const filler = userLine("x".repeat(1000)).repeat(1500); // about 1.5 MB
+  const { file } = makeConfig("hooks-tail", hookLine() + filler + hookLine({ hookName: "Late" }) + line({ type: "ai-title", aiTitle: "T" }));
+  const out = run(["--transcript", file, "--tail-mb", "1"]);
+  assert.equal(out.hookErrors.count, 1);
+  assert.equal(out.hookErrors.last.hook, "Late");
+  assert.equal(out.title, "T");
+  assert.equal(run(["--transcript", file, "--tail-mb", "4"]).hookErrors.count, 2);
+  for (const key of ["title", "transcriptEmail", "loginEmail", "email", "transcript"]) assert.ok(key in out, key);
+});

@@ -1,5 +1,34 @@
 # Changelog
 
+## kit-cloud 2.2.0, kit-statusbar 1.3.0, kit-todos 1.4.0
+
+New features, and the mods now speak Vietnamese as well as English.
+
+### kit-todos
+
+- **Claude can suggest tasks.** When Claude finds follow-up work it is not doing now (out of scope, too large, or
+  waiting for your decision), it can suggest it as a task. The suggestion shows above the prompt with **Add** and
+  **Dismiss**, or run `/todo suggestions`, then `/todo accept <number>` or `/todo reject <number>` (or `all`).
+  Nothing is saved until you add it, and the card shows exactly what will be saved. Turn it off with the
+  `allowSuggestions` option.
+
+### kit-cloud
+
+- **Told when it matters.** While a Claude Code session is open, a cloud session that starts asking you something,
+  opens a PR, fails CI, goes silent or finishes now raises a short message and a system notification. Turn it off
+  with the `notifyInSession` option.
+
+### kit-statusbar
+
+- **Failing hooks no longer go unnoticed.** When hooks fail in this session, the status bar shows a warning such as
+  `⚠ 3 hook errors (Stop)`. Click it to see which hook failed, its command and why. Turn it off with the
+  `showHookErrors` option.
+
+### All three
+
+- **Vietnamese.** A new `language` option (`auto`, `en`, `vi`). `auto` follows Claude Code's own `language`
+  setting; anything other than Vietnamese stays English.
+
 ## kit-cloud-pilot 1.2.0
 
 The marketplace now installs kit-cloud-pilot 1.2.0 ([release notes](https://github.com/KitTran1307/kit-cloud-pilot/releases/tag/v1.2.0)):

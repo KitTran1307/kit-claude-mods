@@ -1,9 +1,10 @@
 import { expect, test } from 'claude-code/testing'
 
 import { accountLabel, baseName, colorIndexOf, joinPath, parseLoginEmail, pickHome, placeOf } from './account'
-import { drawsOn, hasStatusLine, readConfig, statusLineFiles } from './config'
+import { STATUS_LINE_ANSWERS, drawsOn, hasStatusLine, readConfig, statusLineFiles, surfacesForAnswer } from './config'
 import { countdown, fitText, levelColor, paceColor, prettyEffort, prettyModel, toLimit, weekBudget } from './format'
-import { isSessionId, lastTitle, projectSlug, transcriptEmail } from './transcript'
+import { TABLES, en, languageFromSetting, vi } from './i18n'
+import { hookErrors, isSessionId, lastTitle, projectSlug, transcriptEmail } from './transcript'
 
 const NOW = 1_800_000_000_000
 const DAY = 86_400_000
@@ -165,7 +166,8 @@ test('login record: oauthAccount.emailAddress; missing field, invalid JSON or a 
 
 test('options: defaults, and a bad value falls back to the default', () => {
   expect(readConfig({})).toEqual({
-    surfaces: 'auto', weeklyBudgetPerDay: 14, showEmail: true, showTitle: true, showLimits: true, maxTranscriptMB: 8,
+    surfaces: 'auto', language: 'auto', weeklyBudgetPerDay: 14, showEmail: true, showTitle: true, showLimits: true,
+    showHookErrors: true, maxTranscriptMB: 8,
   })
   expect(readConfig(undefined).weeklyBudgetPerDay).toBe(14)
   expect(readConfig({ surfaces: 'desktop+terminal' }).surfaces).toBe('desktop+terminal')
@@ -255,4 +257,98 @@ test('a status line counts only when a settings file sets a command', () => {
   expect(statusLineFiles('C:\\Users\\ann\\.claude\\', 'C:\\work\\notes')).toEqual([
     'C:\\Users\\ann\\.claude/settings.json', 'C:\\work\\notes/.claude/settings.json', 'C:\\work\\notes/.claude/settings.local.json',
   ])
+})
+
+// ---------- hook failures ----------
+const failure = (o: object, type = 'hook_non_blocking_error') => row({ type: 'attachment', attachment: { type, ...o }, timestamp: '2026-11-12T08:00:00Z' })
+const STOP = { hookName: 'Stop', command: 'bash scripts/x.sh', stderr: 'Failed with non-blocking status code: bash: scripts/x.sh: No such file or directory' }
+
+test('hook failures: none in a transcript without any', () => {
+  expect(hookErrors('')).toEqual({ count: 0, last: null })
+  expect(hookErrors(row({ type: 'user', message: { content: 'hello' } }) + row({ type: 'attachment', attachment: { type: 'hook_success' } }))).toEqual({ count: 0, last: null })
+})
+
+test('hook failures: one failure gives the hook, the command and the reason without the status prefix', () => {
+  expect(hookErrors(row({ type: 'user' }) + failure(STOP))).toEqual({
+    count: 1,
+    last: { hook: 'Stop', command: 'bash scripts/x.sh', reason: 'bash: scripts/x.sh: No such file or directory' },
+  })
+})
+
+test('hook failures: many, of both kinds, are counted and the latest one is reported', () => {
+  const text = failure(STOP) + failure({ ...STOP, hookName: 'PreToolUse' }) + row({ type: 'user' })
+    + failure({ hookEvent: 'SessionStart', command: 'node gone.js', content: 'Cannot find module\nat line 2' }, 'hook_blocking_error')
+  expect(hookErrors(text)).toEqual({ count: 3, last: { hook: 'SessionStart', command: 'node gone.js', reason: 'Cannot find module' } })
+})
+
+test('hook failures: a long command and reason are shortened, only the first line of the reason is kept', () => {
+  const found = hookErrors(failure({ hookName: 'Stop', command: `node ${'x'.repeat(200)}`, stderr: `\n  ${'y'.repeat(200)}\nsecond line` })).last
+  expect(found?.command.length).toBe(60)
+  expect(found?.command.endsWith('…')).toBe(true)
+  expect(found?.reason.length).toBe(80)
+  expect(found?.reason).not.toContain('second')
+})
+
+test('hook failures: text quoting an entry inside a message (escaped) never counts', () => {
+  const quoted = row({ type: 'user', message: { content: 'see {"type":"hook_non_blocking_error","hookName":"Fake"} and {"type":"hook_blocking_error"}' } })
+  expect(quoted).toContain('\\"type\\":\\"hook_non_blocking_error\\"')
+  expect(hookErrors(quoted)).toEqual({ count: 0, last: null })
+  expect(hookErrors(failure(STOP) + quoted)).toMatchObject({ count: 1, last: { hook: 'Stop' } })
+})
+
+test('hook failures: a stack trace shows the line naming the error, not where it was thrown', () => {
+  // The shape Claude Code writes when a hook's node script is missing (seen in real transcripts).
+  const stderr = "Failed with non-blocking status code: node:internal/modules/cjs/loader:1568\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'x/guard.mjs'\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1564:15)"
+  expect(hookErrors(failure({ hookName: 'PreToolUse:Bash', hookEvent: 'PreToolUse', stderr })).last)
+    .toEqual({ hook: 'PreToolUse:Bash', command: '', reason: "Error: Cannot find module 'x/guard.mjs'" })
+})
+
+test('hook failures: a line cut short or that is not such an entry is skipped; missing fields read as empty', () => {
+  const cut = '{"type":"attachment","attachment":{"type":"hook_non_blocking_error","hookName":"Cu'
+  expect(hookErrors(failure(STOP) + cut)).toMatchObject({ count: 1, last: { hook: 'Stop' } })
+  expect(hookErrors(cut)).toEqual({ count: 0, last: null })
+  expect(hookErrors(row({ type: 'user', data: { type: 'hook_non_blocking_error' } }))).toEqual({ count: 0, last: null })
+  expect(hookErrors(failure({}))).toEqual({ count: 1, last: { hook: '', command: '', reason: '' } })
+})
+
+// ---------- language ----------
+test('options: language and showHookErrors', () => {
+  expect(readConfig({}).language).toBe('auto')
+  expect(readConfig({ language: 'vi' }).language).toBe('vi')
+  expect(readConfig({ language: 'en' }).language).toBe('en')
+  expect(readConfig({ language: 'fr' }).language).toBe('auto')
+  expect(readConfig({}).showHookErrors).toBe(true)
+  expect(readConfig({ showHookErrors: false }).showHookErrors).toBe(false)
+})
+
+test('language setting: Vietnamese in its usual spellings is vi; anything else, or no text, is en', () => {
+  for (const v of ['vi', 'VI', 'vi-VN', 'vi_VN', 'Vietnamese', 'vietnamese', 'Tiếng Việt', ' tiếng  việt ', 'Viet']) {
+    expect(languageFromSetting(v)).toBe('vi')
+  }
+  for (const v of ['en', 'English', 'japanese', 'visual', 'vim', '', undefined, null, 5, {}]) {
+    expect(languageFromSetting(v)).toBe('en')
+  }
+})
+
+test('both languages have the same keys, every word is translated', () => {
+  expect(Object.keys(vi).sort()).toEqual(Object.keys(en).sort())
+  expect(TABLES.en).toBe(en)
+  for (const key of Object.keys(en) as Array<keyof typeof en>) {
+    if (typeof en[key] !== 'string') continue
+    expect(vi[key]).not.toBe('')
+    expect(vi[key]).not.toBe(en[key])
+  }
+  expect(en.hookErrors(1, 'Stop')).toBe('⚠ 1 hook error (Stop)')
+  expect(en.hookErrors(3, 'Stop')).toBe('⚠ 3 hook errors (Stop)')
+  expect(en.hookErrors(2, '')).toBe('⚠ 2 hook errors')
+  expect(vi.hookErrors(3, 'Stop')).toBe('⚠ 3 lỗi hook (Stop)')
+  expect(vi.hookToast({ hook: 'Stop', command: 'bash x.sh', reason: 'not found' })).toBe('Hook Stop lỗi · bash x.sh · not found')
+})
+
+test('the status line answers are understood in either language', () => {
+  expect(surfacesForAnswer(en.answerKeepMine)).toBe('desktop')
+  expect(surfacesForAnswer(` ${vi.answerShowBoth} `)).toBe('desktop+terminal')
+  expect(surfacesForAnswer(vi.answerKeepMine)).toBe('desktop')
+  expect(surfacesForAnswer('something else')).toBe(null)
+  expect(STATUS_LINE_ANSWERS.map(a => a.surfaces)).toEqual(['desktop', 'desktop+terminal'])
 })

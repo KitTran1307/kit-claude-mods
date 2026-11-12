@@ -18,6 +18,10 @@ Code CLI start, track, wait for and answer cloud sessions by itself. cloud-pilot
 background process for all your Claude sessions); kit-cloud reads its state and draws it. Installing kit-cloud
 installs kit-cloud-pilot with it.
 
+**Told when it matters:** while your session is open, kit-cloud shows a message and sends a notification the moment a
+cloud session asks you a question, opens a PR, fails CI, goes silent or finishes (`notifyInSession`). **Vietnamese**
+(tiếng Việt) is built in: the band, `/cloud` and the messages follow Claude Code's `language` setting, or set `language`.
+
 ## Requirements
 
 - A recent Claude Code (CLI or desktop app) with plugin hooks modules.
@@ -75,7 +79,9 @@ Set them in `/config` (the plugin's rows), or in `~/.claude/settings.json` under
 | `scope` | `account+repo` | `account+repo`: this account's sessions in this repo · `repo`: every account's in this repo · `all` |
 | `autoWatch` | `true` | Watch the current GitHub repo for new `claude/*` branches |
 | `showBand` | `true` | Draw the band (off keeps `/cloud`) |
-| `notifications` | `true` | System notification when a session needs you and no Claude session is open for it (applies to tracks registered after you change it) |
+| `notifications` | `true` | System notification from the cloud-pilot hub when a session needs you and **no** Claude session is open for it (applies to tracks registered after you change it) |
+| `notifyInSession` | `true` | While a Claude session **is** open, show a message and a notification when a cloud session starts asking you a question, opens a PR, fails CI, goes silent or finishes. Nothing is replayed when a session starts or reloads. |
+| `language` | `auto` | `auto`: follow Claude Code's own `language` setting (Vietnamese when it is set to Vietnamese, English otherwise) · `en` · `vi`. Read when a session starts. |
 | `deleteMergedBranches` | `false` | Delete a `claude/*` branch you tracked with `/cloud track` after its PR merges, only while it still points at the merged commit. Branches found by watching (maybe a teammate's) are never deleted. Applies to tracks registered after you change it. |
 
 The "account" is the Claude config folder: `~/.claude` is `default`, `~/.claude-work` (via `CLAUDE_CONFIG_DIR`) is

@@ -1,6 +1,6 @@
 {
   "name": "kit-statusbar",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "A status bar for Claude Code in the desktop app and the CLI: repo, model, effort, context, account, session title, 5-hour and weekly limits.",
   "author": {
     "name": "KitTran1307"
@@ -28,6 +28,17 @@
         "desktop+terminal"
       ]
     },
+    "language": {
+      "type": "string",
+      "title": "Language of the band",
+      "description": "auto: Vietnamese when Claude Code's own language setting is Vietnamese, English otherwise (looked up once at session start). en: always English. vi: always Vietnamese (Tiếng Việt).",
+      "default": "auto",
+      "options": [
+        "auto",
+        "en",
+        "vi"
+      ]
+    },
     "weeklyBudgetPerDay": {
       "type": "number",
       "title": "Weekly budget per day (%)",
@@ -52,10 +63,16 @@
       "description": "The row is hidden on its own when there is no rate-limit data (API key or third-party provider).",
       "default": true
     },
+    "showHookErrors": {
+      "type": "boolean",
+      "title": "Warn about failing hooks",
+      "description": "Adds a warning such as \"3 hook errors (Stop)\" to the band when hooks failed in this session (a missing script, a deleted plugin folder). Press it to see which hook, its command and why. The failures are read from this session's own transcript.",
+      "default": true
+    },
     "maxTranscriptMB": {
       "type": "number",
       "title": "Largest transcript to read (MB)",
-      "description": "How much of the session transcript is looked at to find its title. The module reads up to 4 MB itself; a larger transcript is read from its end by the optional Node helper, up to this many MB. Without Node the last known title stays.",
+      "description": "How much of the session transcript is looked at to find its title and its hook failures. The module reads up to 4 MB itself; a larger transcript is read from its end by the optional Node helper, up to this many MB. Without Node the last known title stays.",
       "default": 8
     }
   }

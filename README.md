@@ -6,13 +6,13 @@
 [![Windows · macOS · Linux](https://img.shields.io/badge/os-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-555.svg)](#)
 
 Three small mods for [Claude Code](https://claude.com/claude-code) that add what the interface leaves out. They work
-in the CLI and in the Claude desktop app, on Windows, macOS and Linux.
+in the CLI and in the Claude desktop app, on Windows, macOS and Linux, in English or Vietnamese.
 
 | Plugin | What you get | Needs |
 | --- | --- | --- |
-| [**kit-cloud**](plugins/kit-cloud) | A band above the prompt with your **cloud sessions**: working, asking you something, PR open, CI failed, silent, each with its link. `/cloud` for the table. | Node 18+, GitHub CLI `gh` signed in |
-| [**kit-statusbar**](plugins/kit-statusbar) | A **status bar** for the desktop app (which has none) and the CLI: repo, model, effort, context use, account, session title, 5-hour and weekly limits with reset countdowns. | nothing |
-| [**kit-todos**](plugins/kit-todos) | Your project's **open to-dos** above the prompt, most urgent first, with *Do it now* and *Draft* buttons, plus the project's newest memories. `/todo` to add and finish tasks. | nothing |
+| [**kit-cloud**](plugins/kit-cloud) | A band above the prompt with your **cloud sessions**: working, asking you something, PR open, CI failed, silent, each with its link, and a notification when one needs you. `/cloud` for the table. | Node 18+, GitHub CLI `gh` signed in |
+| [**kit-statusbar**](plugins/kit-statusbar) | A **status bar** for the desktop app (which has none) and the CLI: repo, model, effort, context use, account, session title, 5-hour and weekly limits with reset countdowns, and a warning when a hook keeps failing. | nothing |
+| [**kit-todos**](plugins/kit-todos) | Your project's **open to-dos** above the prompt, most urgent first, with *Do it now* and *Draft* buttons, plus the project's newest memories. `/todo` to add and finish tasks; Claude can suggest tasks for you to approve. | nothing |
 
 All three together in the Claude Code CLI (real screenshot, demo data):
 

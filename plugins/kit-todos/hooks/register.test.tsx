@@ -4,7 +4,9 @@ import {
   COLORS, cardRows, configDirCandidates, countText, dedupeDirs, dueText, localDay, markDoneAt, newId, openTodos, parseIndex,
   parseTodosForWrite, planBand, projectSlug, recentlyDone, resolveTodosPath, shortText, soonDaysFrom, statusOf, taskPrompt,
   usableTodos, validDue, needsReview, isSafeId, textCells, listRowTextCells,
+  checkProposal, addSuggestion, planSuggestions, stripHidden, suggestionRows, SUGGESTIONS_MAX,
 } from './data'
+import { TABLES, languageFromSetting, languageOption } from './i18n'
 
 // Local time, so "today" is 9 Nov 2026 in every time zone the tests may run in.
 const at = (day: number, hour: number, minute = 0) => new Date(2026, 10, day, hour, minute).getTime()
@@ -36,6 +38,7 @@ const PANE = {
   props: { title: 'To-do list', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
 } as const
 const SURFACES = ['terminal', 'desktop'] as const
+const USAGE = 'Usage: /todo | /todo add <task> | /todo done <number> | /todo claim | /todo suggestions | /todo accept <number|all> | /todo reject <number|all>'
 
 /** Everything the fake engine holds and records. Change a field to change what the plugin finds. */
 type World = {
@@ -69,6 +72,10 @@ type World = {
   statuses: (string | undefined)[]
   opened: string[]
   commands: string[]
+  /** Tools the plugin registered at session start. */
+  tools: { name: string; description: string; inputSchema: any }[]
+  /** What Claude Code's `language` setting holds; 'error' = reading settings fails. */
+  language: unknown
 }
 
 const norm = (p: unknown) => String(p).replace(/\\/g, '/')
@@ -97,10 +104,13 @@ function engine(on: any, over: Partial<World> = {}): World {
     failAll: false,
     failIndex: false,
     submitted: [], filled: [], written: [], reads: [], stats: [], toasts: [], statuses: [], opened: [], commands: [],
+    tools: [], language: undefined,
     ...over,
   }
   const refuse = (why: string) => ({ deny: why })
   on('command.register', (_: unknown, e: any) => { w.commands.push(String(e.name)); return w.failAll ? refuse('no') : { value: { command: e.name } } })
+  on('tool.register', (_: unknown, e: any) => { w.tools.push({ name: e.name, description: e.description, inputSchema: e.inputSchema }); return { value: { tool: `mcp__kit-todos__${e.name}` } } })
+  on('settings.read', () => (w.language === 'error' ? refuse('no settings') : { value: w.language === undefined ? {} : { language: w.language } }))
   on('env.get', (_: unknown, e: any) => (w.failEnv || w.failAll ? refuse('no env') : { value: w.env[e.name] }))
   on('fs.list', () => (w.failFs || w.failAll
     ? refuse('EACCES')
@@ -701,8 +711,8 @@ test('/todo add and done without a usable argument explain themselves', async ($
   expect(await run($, 'done 0')).toBe('There is no task 0 in the last /todo list. Type /todo to see it again.')
   expect(await run($, 'DONE 9')).toBe('There is no task 9 in the last /todo list. Type /todo to see it again.')
   expect(await run($, 'done 99999999999999999999')).toContain('There is no task')
-  expect(await run($, 'frobnicate')).toBe('Usage: /todo | /todo add <task> | /todo done <number> | /todo claim')
-  expect(await run($, 'claim now')).toBe('Usage: /todo | /todo add <task> | /todo done <number> | /todo claim')
+  expect(await run($, 'frobnicate')).toBe(USAGE)
+  expect(await run($, 'claim now')).toBe(USAGE)
   expect(w.written).toHaveLength(0)
   expect(w.toasts).toHaveLength(0)
 })
@@ -1269,4 +1279,431 @@ test('a write that lands but cannot be read back does not claim that nothing was
   const out = await run($, 'add Mine')
   expect(out).toContain('was written, but reading it back failed')
   expect(out).not.toContain('Nothing was written')
+})
+
+// --- suggestions from Claude -----------------------------------------------------------------------------------
+
+const PROPOSE = 'mcp__kit-todos__propose_todo'
+const propose = ($: any, input: Record<string, unknown>): Promise<any> => $.tool.call({ tool: PROPOSE, ...input } as never)
+const sugButtons = async (ui: any, prefix: 'sug-add-' | 'sug-no-'): Promise<string[]> =>
+  (await ui.findAll({ type: 'Button' })).map((b: any) => String(b.key ?? '')).filter((k: string) => k.startsWith(prefix))
+const buttonLabels = async (ui: any): Promise<string[]> => (await ui.findAll({ type: 'Button' })).map((b: any) => String(b.label ?? b.text ?? ''))
+const EMPTY = JSON.stringify([])
+const OLD_USAGE = 'Usage: /todo | /todo add <task> | /todo done <number> | /todo claim'
+
+test('propose_todo is registered at session start for Claude, with a description that says nothing is saved until approval', async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  expect(w.tools).toHaveLength(1)
+  const tool = w.tools[0]!
+  expect(tool.name).toBe('propose_todo')
+  expect(tool.description).toContain('not doing now')
+  expect(tool.description).toContain('once per task')
+  expect(tool.description).toContain('Never use it for work you are about to do')
+  expect(tool.description).toContain('must approve')
+  expect(tool.inputSchema.required).toEqual(['text'])
+  expect(tool.inputSchema.properties.text.maxLength).toBe(200)
+  expect(Object.keys(tool.inputSchema.properties).sort()).toEqual(['due', 'note', 'text'])
+  expect(w.commands).toEqual(['todo'])
+})
+
+test('allowSuggestions false registers no tool, and /todo does not mention suggestions', { options: { allowSuggestions: false } }, async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  expect(w.tools).toHaveLength(0)
+  expect(await run($, 'frobnicate')).toBe(OLD_USAGE)
+  expect(await run($, 'suggestions')).toBe(OLD_USAGE)
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await textsOf(ui)).some(t => t.startsWith('Claude suggests'))).toBe(false)
+  await ui.unmount()
+})
+
+test('a proposal is checked: text, due and note are validated and cleaned before anything is kept', () => {
+  const ok = checkProposal({ text: '  Rotate the API keys  ', due: '2026-12-01', note: 'Do it\nbefore\tthe audit' })
+  expect(ok).toEqual({ ok: true, proposal: { text: 'Rotate the API keys', due: '2026-12-01', note: 'Do it before the audit' } })
+  expect(checkProposal({ text: 'Plain', due: '', note: null })).toEqual({ ok: true, proposal: { text: 'Plain' } })
+  expect(checkProposal({ text: 'x'.repeat(200) }).ok).toBe(true)
+  expect(checkProposal({ text: '😀'.repeat(200) }).ok).toBe(true) // counted in characters, not code units
+  const bad: [Record<string, unknown>, RegExp][] = [
+    [{}, /text is required/],
+    [{ text: 7 }, /text is required/],
+    [{ text: '   ' }, /empty/],
+    [{ text: 'x'.repeat(201) }, /201 characters; the limit is 200/],
+    [{ text: 'First line\nsecond line' }, /single line/],
+    [{ text: 'First line second' }, /single line/],
+    [{ text: 'Fine', due: '2026-02-30' }, /due must be a real day/],
+    [{ text: 'Fine', due: 'tomorrow' }, /due must be a real day/],
+    [{ text: 'Fine', due: '2026-11-9' }, /due must be a real day/],
+    [{ text: 'Fine', due: 20261110 }, /due must be a real day/],
+    [{ text: 'Fine', note: 'n'.repeat(301) }, /301 characters; the limit is 300/],
+    [{ text: 'Fine', note: 5 }, /note must be a string/],
+  ]
+  for (const [input, why] of bad) {
+    const out = checkProposal(input)
+    expect(out.ok).toBe(false)
+    expect(out.ok ? '' : out.why).toMatch(why)
+  }
+  // Characters a card does not show are removed, so the card and the saved task are the same text.
+  const hidden = checkProposal({ text: 'Fix​ the ‮login‬ bug\u0007', note: 'a\u{E0041}b' })
+  expect(hidden).toEqual({ ok: true, proposal: { text: 'Fix the login bug', note: 'ab' } })
+  expect(stripHidden('a‍b\u0000c\tline\n')).toBe('abc\tline\n')
+})
+
+test('the pending list drops repeats (ignoring case) and stops at the cap', () => {
+  const one = addSuggestion([], { text: 'Rotate keys' }, 's1')
+  expect(one.status).toBe('added')
+  expect(addSuggestion(one.list, { text: 'rotate KEYS', due: '2026-12-01' }, 's2')).toEqual({ list: one.list, status: 'duplicate' })
+  let list = one.list
+  for (let i = 2; i <= SUGGESTIONS_MAX; i++) list = addSuggestion(list, { text: `Task ${i}` }, `s${i}`).list
+  expect(list).toHaveLength(SUGGESTIONS_MAX)
+  expect(addSuggestion(list, { text: 'One too many' }, 'sx')).toEqual({ list, status: 'full' })
+  expect(addSuggestion(list, { text: 'task 2' }, 'sy').status).toBe('duplicate') // a repeat is told apart from a full list
+})
+
+test('propose_todo keeps the proposal in the session and writes nothing', async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  const out = await propose($, { text: 'Move the cron jobs to the new host', due: '2026-12-01', note: 'Needs your decision on the date' })
+  expect(out.result).toBe('Proposed to the person; it is saved only if they approve.')
+  expect(w.written).toHaveLength(0)
+  expect(w.toasts).toHaveLength(1)
+  expect(w.toasts[0]).toContain('Move the cron jobs to the new host')
+  expect(await run($, 'suggestions')).toBe([
+    'Claude suggests 1 task (nothing is saved until you add it):',
+    '1. Move the cron jobs to the new host - Tue Dec 1 (note: Needs your decision on the date)',
+    'Type /todo accept <number|all> to add, /todo reject <number|all> to dismiss.',
+  ].join('\n'))
+  expect(w.written).toHaveLength(0)
+  // The same text again is not stacked up; a bad call is refused with a reason and keeps nothing.
+  expect((await propose($, { text: 'move the cron jobs to the NEW host' })).result).toContain('Already proposed')
+  for (const bad of [{ text: 'x'.repeat(201) }, { text: 'a\nb' }, { text: 'Fine', due: '2026-13-40' }, {}]) {
+    const refused = await propose($, bad)
+    expect(typeof refused.deny).toBe('string')
+    expect(refused.deny.length).toBeGreaterThan(10)
+    expect(refused.result).toBeUndefined()
+  }
+  expect((await run($, 'suggestions')).split('\n')).toHaveLength(3)
+  expect(w.written).toHaveLength(0)
+})
+
+test('at most 10 proposals wait; the eleventh is refused and tells Claude to say it in its message instead', async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  for (let i = 1; i <= SUGGESTIONS_MAX; i++) expect((await propose($, { text: `Follow-up ${i}` })).result).toContain('Proposed')
+  const refused = await propose($, { text: 'Follow-up 11' })
+  expect(refused.deny).toContain('Too many suggestions')
+  expect((await run($, 'suggestions')).split('\n')).toHaveLength(SUGGESTIONS_MAX + 2)
+})
+
+test('the band shows suggestions first, in full, with Add and Dismiss, on terminal and desktop', async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  await propose($, { text: 'Review the billing job', due: '2026-11-10', note: 'It retried twice last night' })
+  await propose($, { text: 'Drop the old staging site' })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ ...BAND, surface })
+    const texts = await textsOf(ui)
+    const first = texts.indexOf('Claude suggests: Review the billing job (tomorrow, Tue Nov 10)')
+    expect(first).toBeGreaterThan(-1)
+    expect(texts).toContain('Note: It retried twice last night')
+    expect(texts).toContain('Claude suggests: Drop the old staging site')
+    expect(texts.indexOf('Tasks for Acme')).toBeGreaterThan(first) // above the tasks
+    expect(await sugButtons(ui, 'sug-add-')).toHaveLength(2)
+    expect(await sugButtons(ui, 'sug-no-')).toHaveLength(2)
+    expect(await ui.find({ type: 'Button', key: 'hide' })).toBeDefined() // the task band still follows
+    await ui.unmount()
+  }
+})
+
+test('Add writes exactly one task with its date and note, removes the proposal and says so', async ($, on) => {
+  const w = engine(on, { todos: EMPTY })
+  await start($, w)
+  await propose($, { text: 'Review the billing job', due: '2026-11-10', note: 'It retried twice last night' })
+  await propose($, { text: 'Drop the old staging site' })
+  const toasts = w.toasts.length
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const [first] = await sugButtons(ui, 'sug-add-')
+  await ui.press({ key: first! })
+  expect(w.written).toHaveLength(1)
+  isPath(w.written[0]?.path, DEFAULT_FILE)
+  const saved = JSON.parse(w.written[0]!.text)
+  expect(saved).toHaveLength(1)
+  expect(saved[0]).toMatchObject({ text: 'Review the billing job', due: '2026-11-10', note: 'It retried twice last night', project: 'Acme', done: false })
+  expect(typeof saved[0].id).toBe('string')
+  expect(w.toasts.at(-1)).toBe('Added: Review the billing job')
+  expect(w.toasts.length).toBe(toasts + 1)
+  await ui.unmount()
+  const after = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const texts = await textsOf(after)
+  expect(texts).not.toContain('Claude suggests: Review the billing job (tomorrow, Tue Nov 10)')
+  expect(texts).toContain('Claude suggests: Drop the old staging site')
+  expect(texts).toContain('Review the billing job') // now an ordinary task
+  expect(await sugButtons(after, 'sug-add-')).toHaveLength(1)
+  await after.unmount()
+  expect(w.written).toHaveLength(1)
+})
+
+test('Dismiss removes the proposal and writes nothing', async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  await propose($, { text: 'Review the billing job' })
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  const [no] = await sugButtons(ui, 'sug-no-')
+  await ui.press({ key: no! })
+  await ui.unmount()
+  expect(w.written).toHaveLength(0)
+  expect(await run($, 'suggestions')).toBe('Claude has no suggestions waiting.')
+  const after = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect((await textsOf(after)).some(t => t.startsWith('Claude suggests'))).toBe(false)
+  await after.unmount()
+})
+
+test('a failed Add keeps the proposal, so it can be tried again', async ($, on) => {
+  const w = engine(on, { todos: '{"not": "a list"}' })
+  await start($, w)
+  await propose($, { text: 'Review the billing job' })
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const [add] = await sugButtons(ui, 'sug-add-')
+  await ui.press({ key: add! })
+  await ui.unmount()
+  expect(w.written).toHaveLength(0)
+  expect(w.toasts.at(-1)).toContain('Could not update your to-do list')
+  expect(await run($, 'suggestions')).toContain('1. Review the billing job')
+  w.todos = '[]'
+  const again = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await again.press({ key: (await sugButtons(again, 'sug-add-'))[0]! })
+  await again.unmount()
+  expect(w.written).toHaveLength(1)
+})
+
+test('suggestions stay in the band after Hide today, and show even when the project has no tasks', async ($, on) => {
+  const w = engine(on, { todos: EMPTY })
+  await start($, w)
+  const none = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await none.find({ type: 'Text', text: 'engine' })).toBeDefined() // nothing at all: the engine's own
+  await none.unmount()
+  await propose($, { text: 'Review the billing job' })
+  const only = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await only.find({ type: 'Text', text: 'Claude suggests: Review the billing job' })).toBeDefined()
+  expect(await only.find({ type: 'Text', text: 'engine' })).toBeDefined() // the bands beneath still draw
+  expect(await only.find({ type: 'Button', key: 'hide' })).toBeUndefined()
+  await only.unmount()
+  w.todos = JSON.stringify(RAW)
+  await run($, '')
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'hide' })
+  await ui.unmount()
+  const hidden = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await hidden.find({ type: 'Text', text: 'Claude suggests: Review the billing job' })).toBeDefined()
+  expect(await hidden.find({ type: 'Button', key: 'hide' })).toBeUndefined()
+  await hidden.unmount()
+  for (const props of [{ ...BAND.props, hasSurvey: true }, { ...BAND.props, isWorking: true }]) {
+    const quiet = await $.ui.mount({ ...BAND, surface: 'terminal', props })
+    expect(await quiet.find({ type: 'Text', text: 'Claude suggests: Review the billing job' })).toBeUndefined()
+    await quiet.unmount()
+  }
+})
+
+test('the band keeps to its rows: a short terminal shows what fits whole, a tiny one a single line', async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  for (let i = 1; i <= 6; i++) await propose($, { text: `Follow-up number ${i}` })
+  const tall = await $.ui.mount({ ...BAND, surface: 'terminal', props: { ...BAND.props, maxRows: 14, bodyColumns: 110 } })
+  const shownCount = (await sugButtons(tall, 'sug-add-')).length
+  expect(shownCount).toBeGreaterThan(0)
+  expect(shownCount).toBeLessThan(6)
+  expect((await textsOf(tall)).some(t => /^\d+ more suggestions?\. Type \/todo suggestions\.$/.test(t))).toBe(true)
+  expect(await tall.find({ type: 'Button', key: 'hide' })).toBeDefined() // the tasks still get their half
+  await tall.unmount()
+  const tiny = await $.ui.mount({ ...BAND, surface: 'terminal', props: { ...BAND.props, maxRows: 4, bodyColumns: 60 } })
+  expect(await sugButtons(tiny, 'sug-add-')).toHaveLength(0) // no card fits whole, so no Add is offered
+  expect((await textsOf(tiny)).some(t => t.includes('6 tasks suggested by Claude'))).toBe(true)
+  await tiny.press({ key: 'sug-review' })
+  expect(w.opened).toEqual(['kit-todos'])
+  await tiny.unmount()
+  const pending = [1, 2, 3].map(i => ({ id: `s${i}`, text: `Follow-up ${i}`, note: i === 1 ? 'x'.repeat(250) : undefined }))
+  expect(suggestionRows(pending[0]!, 110, NOW)).toBeGreaterThan(suggestionRows(pending[1]!, 110, NOW))
+  for (const [rows, cols] of [[40, 160], [20, 110], [10, 80], [6, 60], [3, 40], [1, 30]] as const) {
+    for (const withTasks of [false, true]) {
+      const plan = planSuggestions(rows, cols, pending, withTasks, NOW)
+      expect(plan.rows).toBeLessThanOrEqual(withTasks ? Math.floor(rows / 2) : rows)
+    }
+  }
+  expect(planSuggestions(40, 160, [], true, NOW).mode).toBe('none')
+})
+
+test('the pane lists every suggestion whole, with Add and Dismiss', async ($, on) => {
+  const w = engine(on, { todos: EMPTY })
+  await start($, w)
+  const long = `${'Long task '.repeat(18)}end` // 183 characters: the pane never cuts a suggestion
+  await propose($, { text: long, note: 'Some detail' })
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const texts = await textsOf(pane)
+  expect(texts).toContain('Claude suggests (1)')
+  expect(texts).toContain(`Claude suggests: ${long}`)
+  expect(texts).toContain('Note: Some detail')
+  await pane.press({ key: (await sugButtons(pane, 'sug-add-'))[0]! })
+  await pane.unmount()
+  expect(JSON.parse(w.written[0]!.text)[0]).toMatchObject({ text: long, note: 'Some detail' })
+})
+
+test('/todo accept and reject act on the numbers of the last /todo suggestions, and on all of them', async ($, on) => {
+  const w = engine(on, { todos: EMPTY })
+  await start($, w)
+  for (const text of ['One', 'Two', 'Three', 'Four']) await propose($, { text })
+  expect(await run($, 'accept 1')).toBe('Type /todo suggestions first to see the numbered list, then /todo accept <number>.')
+  expect(await run($, 'reject all')).toBe('Type /todo suggestions first to see the numbered list, then /todo reject <number>.')
+  await run($, 'suggestions')
+  expect(await run($, 'accept')).toBe('Usage: /todo accept <number> | /todo accept all')
+  expect(await run($, 'accept x')).toBe('Usage: /todo accept <number> | /todo accept all')
+  expect(await run($, 'reject -1')).toBe('Usage: /todo reject <number> | /todo reject all')
+  expect(await run($, 'accept 9')).toContain('There is no suggestion 9')
+  expect(w.written).toHaveLength(0)
+  expect(await run($, 'reject 2')).toBe('Dismissed: Two')
+  expect(w.written).toHaveLength(0)
+  // The numbers are the ones listed, even though "Two" is gone from the list now.
+  expect(await run($, 'accept 3')).toBe('Added: Three')
+  expect(JSON.parse(w.written.at(-1)!.text).map((t: any) => t.text)).toEqual(['Three'])
+  expect(await run($, 'accept 3')).toContain('already handled')
+  expect(await run($, 'accept all')).toBe("Added 2 tasks from Claude's suggestions.")
+  expect(JSON.parse(w.written.at(-1)!.text).map((t: any) => t.text)).toEqual(['Three', 'One', 'Four'])
+  expect(w.written).toHaveLength(3)
+  expect(await run($, 'suggestions')).toBe('Claude has no suggestions waiting.')
+  await propose($, { text: 'Five' })
+  await propose($, { text: 'Six' })
+  await run($, 'suggestions')
+  expect(await run($, 'reject all')).toBe('Dismissed 2 suggestions.')
+  expect(w.written).toHaveLength(3)
+})
+
+test('a suggestion the person did not see listed is not added by /todo accept all', async ($, on) => {
+  const w = engine(on, { todos: EMPTY })
+  await start($, w)
+  await propose($, { text: 'Seen' })
+  await run($, 'suggestions')
+  await propose($, { text: 'Arrived after the list' })
+  expect(await run($, 'accept all')).toBe('Added: Seen')
+  expect(JSON.parse(w.written[0]!.text).map((t: any) => t.text)).toEqual(['Seen'])
+  expect(await run($, 'suggestions')).toContain('1. Arrived after the list')
+})
+
+// --- language --------------------------------------------------------------------------------------------------
+
+test('the language setting maps to a UI language: Vietnamese spellings give vi, anything else en', () => {
+  for (const value of ['vi', 'VI', 'vi-VN', 'Vietnamese', 'vietnamese', ' Viet ', 'Tiếng Việt', 'tiếng việt', 'TIẾNG VIỆT', 'Tiếng Việt'.normalize('NFD')]) {
+    expect(languageFromSetting(value)).toBe('vi')
+  }
+  for (const value of ['en', 'English', 'french', 'Visayan', 'video', '', undefined, null, 5, {}, ['vi']]) {
+    expect(languageFromSetting(value)).toBe('en')
+  }
+  expect(['auto', 'en', 'vi', 'fr', undefined, 3].map(languageOption)).toEqual(['auto', 'en', 'vi', 'auto', 'auto', 'auto'])
+})
+
+test('both language tables have the same keys, and every Vietnamese word is in composed form', () => {
+  expect(Object.keys(TABLES.vi).sort()).toEqual(Object.keys(TABLES.en).sort())
+  const strings = (table: any): string[] => Object.values(table).flatMap((v: any) =>
+    typeof v === 'string' ? [v] : typeof v === 'function' ? [v(1, 2, 3), v(true, 'x', 'y'), v('x', 'y', 'z')].filter(x => typeof x === 'string') : strings(v))
+  for (const text of strings(TABLES.vi)) expect(text).toBe(text.normalize('NFC'))
+  expect(strings(TABLES.vi).some(t => /[ăâđêôơư]/i.test(t))).toBe(true)
+  expect(TABLES.en.status.over).toBe('Overdue')
+  expect(TABLES.vi.status.over).toBe('Quá hạn')
+})
+
+test('language auto follows the language setting of Claude Code once, at session start', async ($, on) => {
+  const w = engine(on, { language: 'Vietnamese' })
+  await start($, w)
+  const first = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await textsOf(first)).includes('Việc cần làm của Acme')).toBe(true)
+  await first.unmount()
+  w.language = 'English' // read once: a later change of the setting does not switch a running session
+  const second = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await textsOf(second)).includes('Việc cần làm của Acme')).toBe(true)
+  await second.unmount()
+})
+
+for (const [name, language] of [['cannot be read', 'error'], ['has no language', undefined], ['names another language', 'French']] as const) {
+  test(`language auto with settings that ${name} is English`, async ($, on) => {
+    const w = engine(on, { language })
+    await start($, w)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    expect((await textsOf(ui)).includes('Tasks for Acme')).toBe(true)
+    await ui.unmount()
+  })
+}
+
+test('language en keeps English even when Claude Code is set to Vietnamese', { options: { language: 'en' } }, async ($, on) => {
+  const w = engine(on, { language: 'Vietnamese' })
+  await start($, w)
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await textsOf(ui)).includes('Tasks for Acme')).toBe(true)
+  await ui.unmount()
+})
+
+test('language vi draws the band, the pane and /todo in Vietnamese, and keeps the prompt for Claude in English', { options: { language: 'vi' } }, async ($, on) => {
+  const w = engine(on, { language: 'English' })
+  await start($, w)
+  expect(w.statuses.at(-1)).toBe('✻ 4 việc, 1 quá hạn')
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ ...BAND, surface })
+    const texts = await textsOf(ui)
+    for (const expected of [
+      'Việc cần làm của Acme', '4 việc, 1 quá hạn', 'quá hạn 2 ngày (T7 7/11)', 'hôm nay, T2 9/11', 'ngày mai, T3 10/11', 'Còn 1 việc nữa trong danh sách.',
+      '● Quá hạn', '● Sắp đến hạn', '● Đã lên lịch', '● Chưa có hạn', '● Xong',
+    ]) expect(texts).toContain(expected)
+    expect(texts).not.toContain('Tasks for Acme')
+    expect(await buttonLabels(ui)).toEqual(expect.arrayContaining(['Làm ngay', 'Soạn nháp', 'Mở danh sách', 'Ẩn hôm nay']))
+    await ui.unmount()
+  }
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const paneTexts = await textsOf(pane)
+  expect(paneTexts).toContain('Danh sách việc cần làm')
+  expect(paneTexts).toContain('Thêm việc: /todo add <việc>')
+  expect(paneTexts).toContain('Ghi nhớ gần đây')
+  await pane.unmount()
+  const text = await run($, '')
+  expect(text.split('\n')).toEqual([
+    'Việc cần làm của Acme (4):',
+    '1. [Quá hạn] Late task - quá hạn 2 ngày (T7 7/11)',
+    '2. [Sắp đến hạn] Task with no project - hôm nay, T2 9/11',
+    '3. [Sắp đến hạn] Report the results - ngày mai, T3 10/11',
+    '4. [Chưa có hạn] Email the supplier',
+    '3 việc chỉ khớp theo tên thư mục, nên các thư mục khác cùng tên cũng hiện chúng.',
+    'Gõ /todo claim để gắn chúng vào kho mã này.',
+    `Tệp danh sách: ${DEFAULT_FILE}`,
+  ])
+  expect(await run($, 'add')).toBe('Cách dùng: /todo add <việc>')
+  expect(await run($, 'frobnicate')).toContain('Cách dùng: /todo')
+  expect(await run($, 'done 1')).toBe('Xong: Late task')
+  // "Draft" hands Claude the same English prompt whatever the language of the interface.
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'draft-0' })
+  expect(w.filled.at(-1)).toContain('Work on this task from my to-do list')
+  expect(w.filled.at(-1)).toContain('ask me before you decide on my behalf')
+  await ui.unmount()
+})
+
+test('language vi: suggestions, buttons, toasts and replies are Vietnamese; what Claude reads stays English', { options: { language: 'vi' } }, async ($, on) => {
+  const w = engine(on, { todos: EMPTY })
+  await start($, w)
+  expect(w.tools[0]!.description).toContain('Propose one follow-up task') // the model's tool description is English
+  const out = await propose($, { text: 'Kiểm tra lại hóa đơn', due: '2026-11-10', note: 'Chạy lỗi hai lần' })
+  expect(out.result).toBe('Proposed to the person; it is saved only if they approve.')
+  expect((await propose($, { text: 'x'.repeat(201) })).deny).toContain('limit is 200')
+  expect(w.toasts[0]).toBe('Claude gợi ý một việc: Kiểm tra lại hóa đơn. Gõ /todo suggestions để xem và duyệt.')
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const texts = await textsOf(ui)
+  expect(texts).toContain('Claude gợi ý: Kiểm tra lại hóa đơn (ngày mai, T3 10/11)')
+  expect(texts).toContain('Ghi chú: Chạy lỗi hai lần')
+  expect(await buttonLabels(ui)).toEqual(expect.arrayContaining(['Thêm', 'Bỏ qua']))
+  await ui.press({ key: (await sugButtons(ui, 'sug-add-'))[0]! })
+  await ui.unmount()
+  expect(w.toasts.at(-1)).toBe('Đã thêm: Kiểm tra lại hóa đơn')
+  expect(JSON.parse(w.written[0]!.text)[0]).toMatchObject({ text: 'Kiểm tra lại hóa đơn', due: '2026-11-10', note: 'Chạy lỗi hai lần' })
+  await propose($, { text: 'Một việc nữa' })
+  expect(await run($, 'suggestions')).toBe([
+    'Claude gợi ý 1 việc (chưa lưu gì cho đến khi bạn thêm):',
+    '1. Một việc nữa',
+    'Gõ /todo accept <số|all> để thêm, /todo reject <số|all> để bỏ qua.',
+  ].join('\n'))
+  expect(await run($, 'reject 1')).toBe('Đã bỏ qua: Một việc nữa')
 })
