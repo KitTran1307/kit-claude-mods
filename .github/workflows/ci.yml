@@ -10,7 +10,7 @@ permissions:
 
 env:
   # The Claude Code these checks are pinned to, so a run can be repeated. The `latest` job tries the newest one.
-  CLAUDE_CODE_VERSION: 2.1.322
+  CLAUDE_CODE_VERSION: 2.1.325
 
 jobs:
   plugins:

@@ -1,5 +1,10 @@
 # Changelog
 
+## kit-graphite 1.2.2
+
+- **Needs Claude Code 2.1.323 or later.** Earlier versions refuse to set the theme, so the README now says so. The
+  plugin itself is unchanged.
+
 ## kit-todos 1.5.0, kit-graphite 1.2.1
 
 ### kit-graphite (new)

@@ -12,6 +12,8 @@ Dots are drawn only in the middle, between the app's sidebars, which cover the s
 
 ## Install
 
+Needs Claude Code 2.1.323 or later: earlier versions refuse to set the theme.
+
 At the prompt of a terminal session:
 
 ```
