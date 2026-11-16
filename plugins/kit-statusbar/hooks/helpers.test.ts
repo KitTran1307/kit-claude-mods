@@ -182,14 +182,16 @@ test('options: defaults, and a bad value falls back to the default', () => {
   expect(readConfig({ maxTranscriptMB: 2 }).maxTranscriptMB).toBe(2)
 })
 
-test('surfaces: the desktop always, the terminal only on desktop+terminal, nothing else', () => {
+test('surfaces: the desktop and mobile apps always, the terminal only on desktop+terminal, nothing else', () => {
   const desktopOnly = readConfig({ surfaces: 'desktop' })
   const both = readConfig({ surfaces: 'desktop+terminal' })
   expect(drawsOn(desktopOnly, 'desktop')).toBe(true)
   expect(drawsOn(desktopOnly, 'terminal')).toBe(false)
   expect(drawsOn(both, 'desktop')).toBe(true)
   expect(drawsOn(both, 'terminal')).toBe(true)
-  for (const surface of ['mobile', 'vscode', 'something-new']) {
+  expect(drawsOn(desktopOnly, 'mobile')).toBe(true)
+  // VS Code draws no band above the prompt at all (the engine raises AbovePrompt on terminal, desktop, mobile).
+  for (const surface of ['vscode', 'something-new']) {
     expect(drawsOn(both, surface)).toBe(false)
   }
 })
@@ -236,14 +238,15 @@ test('email: the session context\'s own address; quoted text and a missing key g
   expect(transcriptEmail(row({ type: 'user' }))).toBe('')
 })
 
-test('surfaces: auto draws in the terminal only without a status line; desktop always; unknown never', () => {
+test('surfaces: auto draws in the terminal only without a status line; desktop and mobile always; unknown never', () => {
   const auto = readConfig({})
   expect(drawsOn(auto, 'desktop', true)).toBe(true)
   expect(drawsOn(auto, 'terminal', false)).toBe(true)
   expect(drawsOn(auto, 'terminal', true)).toBe(false)
   expect(drawsOn(readConfig({ surfaces: 'desktop' }), 'terminal', false)).toBe(false)
   expect(drawsOn(readConfig({ surfaces: 'desktop+terminal' }), 'terminal', true)).toBe(true)
-  expect(drawsOn(auto, 'mobile', false)).toBe(false)
+  expect(drawsOn(auto, 'mobile', true)).toBe(true)
+  expect(drawsOn(auto, 'vscode', false)).toBe(false)
 })
 
 test('a status line counts only when a settings file sets a command', () => {

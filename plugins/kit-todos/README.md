@@ -40,7 +40,8 @@ and a single line when there is almost no room. It never scrolls.
 - The Claude Code CLI or the Claude desktop app, on Windows, macOS or Linux.
 - [Node.js](https://nodejs.org) 18 or later on your `PATH`, only for [tasks Claude suggests](#tasks-claude-suggests):
   the suggestion tool is a small local MCP server with no dependencies. Without Node everything else works and Claude
-  simply has no suggestion tool. No Python, no account. The plugin only reads and writes your todos file and reads the
+  simply has no suggestion tool: the plugin holds the server back (`/mcp` lists it as disabled), so no error shows.
+  No Python, no account. The plugin only reads and writes your todos file and reads the
   project's memory index; it uses no network.
 - Works with [Code Mode](https://code.claude.com/docs/en/code-mode): the plugin hooks no tool calls.
 
@@ -136,8 +137,9 @@ longer than the card shows, wider than a one-line list row shows (a short termin
 (control, zero-width or bidi marks), it drafts the whole prompt into the prompt box instead, so you read it before you
 send it. This keeps a todos file edited by someone else, or imported, from slipping instructions you never saw to Claude.
 
-The prompt Claude receives names your todos file and asks it to set `"done": true` and `"doneAt"` (the current UTC
-time) on that task once it is finished and verified, and to ask you before it decides anything on your behalf.
+The prompt Claude receives asks it to end its last reply with the line `kit-todos done <id>` once the task is finished
+and verified, and to ask you before it decides anything on your behalf. The plugin reads that line and marks the task
+done itself, so Claude never edits your todos file (and you get no permission prompt for it).
 
 ## Tasks Claude suggests
 

@@ -17,6 +17,6 @@ export type CloudRow = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'kit-cloud': { rows: Shaped<CloudRow[]>; expanded: boolean; updatedAt: number; error: string; stale: string; noWaiter: string }
+    'kit-cloud': { rows: Shaped<CloudRow[]>; expanded: boolean; updatedAt: number; error: string; stale: string; noWaiter: string; ghProblem: string }
   }
 }

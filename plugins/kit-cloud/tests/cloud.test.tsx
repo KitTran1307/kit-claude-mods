@@ -4,7 +4,7 @@ import type { On } from 'claude-code'
 import { settingsFrom } from '../hooks/register'
 import { STRINGS, changeText, languageFromSetting, languageOption } from '../hooks/i18n'
 import {
-  HUB_STALE_MS, accountName, agoText, changes, fit, fromHub, ghSlug, inScope, parseCommand, safeUrl, snapshot, staleNote, stateWord, summary, table, waiterNote,
+  HUB_STALE_MS, accountName, agoText, changes, fit, fromHub, ghSlug, githubNote, inScope, parseCommand, safeUrl, snapshot, staleNote, stateWord, summary, table, waiterNote,
 } from '../hooks/status'
 import type { HubRow } from '../hooks/status'
 
@@ -135,6 +135,33 @@ test('summary, table, stale notes and widths', async () => {
   expect(staleNote(NOW_MS - HUB_STALE_MS - 60_000, NOW_MS, false)).toBe('')
   expect(fit('line\nbreak', 20)).toBe('line break'.padEnd(20))
   expect(fit('🚀🚀🚀🚀', 3)).toBe('🚀🚀…')
+})
+
+test('githubNote: gh\'s error said plainly, with what to do', () => {
+  const t = STRINGS.en
+  expect(githubNote(undefined, t)).toBe('')
+  expect(githubNote('gh api repos/o/r/pulls failed: To get started with GitHub CLI, please run:  gh auth login', t)).toBe(t.ghSignedOut)
+  expect(githubNote('gh api x failed: HTTP 401: Bad credentials', t)).toBe(t.ghSignedOut)
+  expect(githubNote('spawn gh ENOENT', t)).toBe(t.ghMissing)
+  expect(githubNote('gh api x failed: error connecting to api.github.com', t)).toBe(t.ghOffline)
+  expect(githubNote('gh api repos/o/r: 404 (no access with the o login, or the repo is gone)', t)).toBe(t.ghNoAccess)
+  expect(githubNote('gh api x failed: something new', t)).toBe(t.ghOther)
+  expect(githubNote('spawn gh ENOENT', STRINGS.vi)).toContain('GitHub CLI')
+})
+
+test('a failing GitHub poll shows on the band and in /cloud, in plain words', async ($, on) => {
+  engine(on, {
+    state: () => JSON.stringify({
+      hub: { polledMs: NOW_MS - 60_000 }, rows: [row()],
+      errors: { 'octo/demo': 'gh api repos/octo/demo/pulls failed: To get started with GitHub CLI, please run:  gh auth login' },
+    }),
+  })
+  on('ui.render', ($, e) => { const { Text } = $.ui.resolve(e); return <Text>engine</Text> })
+  await $.session.start({ cwd: '/work/demo', surface: 'terminal', isInteractive: true })
+  expect(JSON.stringify(await $.command.run({ command: 'cloud' } as never))).toContain('run gh auth login')
+  const ui = await $.ui.mount({ plugin: 'kit-cloud', component: 'AbovePrompt', surface: 'desktop', props: BAND })
+  expect((await ui.find({ type: 'Text', text: /gh auth login/ }))?.text).toContain('signed out')
+  await ui.unmount()
 })
 
 test('the band shows this account and repo only, and a click expands it', async ($, on) => {

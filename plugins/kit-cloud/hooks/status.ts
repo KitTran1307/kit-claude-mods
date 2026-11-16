@@ -62,6 +62,20 @@ export function agoText(startedEpoch: number, nowEpoch: number): string {
   return m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${Math.floor(m / 1440)}d`
 }
 
+/**
+ * One plain line for the hub's last poll error on this repo (its `errors[repo]`), saying what to do; '' for none.
+ * The raw text is gh's, so it is matched loosely: sign-in, a missing gh, the network, no access, anything else.
+ */
+export function githubNote(message: unknown, t: Strings = EN): string {
+  const m = typeof message === 'string' ? message : ''
+  if (!m.trim()) return ''
+  if (/gh auth login|not logged in|authentication|HTTP 401|bad credentials/i.test(m)) return t.ghSignedOut
+  if (/ENOENT|not recognized|command not found|no such file/i.test(m)) return t.ghMissing
+  if (/error connecting|could not resolve|ENOTFOUND|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|timed? ?out|network/i.test(m)) return t.ghOffline
+  if (/\b404\b|HTTP 403|no access/i.test(m)) return t.ghNoAccess
+  return t.ghOther
+}
+
 /** The hub polls every 2-5 minutes while it has live sessions: older than this, its rows are stale. */
 export const HUB_STALE_MS = 15 * 60_000
 

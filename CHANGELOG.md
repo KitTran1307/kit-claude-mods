@@ -1,5 +1,30 @@
 # Changelog
 
+## kit-cloud 2.3.0, kit-statusbar 1.4.0, kit-todos 1.6.0, kit-cloud-pilot 1.3.0
+
+Fewer errors and fewer steps, in more situations.
+
+### kit-cloud
+
+- **Says why the band is not updating.** When the GitHub CLI is signed out, not installed, offline, or cannot read the
+  repo, the band and `/cloud` say so in one plain line with what to do (for example "run gh auth login"), instead of
+  staying silently old.
+- **Installs kit-cloud-pilot 1.3.0:** starting a cloud session on Windows needs no Python any more (Windows' own
+  pseudo-console is used), and branches the watch found on its own no longer raise error notifications.
+
+### kit-statusbar
+
+- **Shows in the Claude mobile app too.** (The VS Code extension draws no band above the prompt, so nothing shows
+  there; the README says so.)
+
+### kit-todos
+
+- **"Do it now" no longer edits your todos file through Claude.** Claude ends its reply with `kit-todos done <id>`
+  and the plugin marks the task done itself, so there is no permission prompt for a file outside your project.
+- **No error without Node.js.** Without Node 18+, the suggestion server is held back (`/mcp` lists it as disabled)
+  instead of failing at every start; everything else works and Claude simply has no suggestion tool.
+- A suggestion poll that ends with the session no longer leaves an unhandled error behind.
+
 ## kit-cloud-pilot 1.2.2
 
 kit-cloud installs kit-cloud-pilot 1.2.2: with Claude Code's Code Mode on, starting a cloud session no longer waits

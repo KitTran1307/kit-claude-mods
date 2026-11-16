@@ -316,9 +316,29 @@ export function taskPrompt(todo: Todo, file: string): string {
   return [
     `Work on this task from my to-do list (id ${isSafeId(todo.id) ? todo.id : JSON.stringify(todo.id)}): ${todo.text}`,
     typeof todo.note === 'string' && todo.note ? `Note: ${todo.note}` : '',
-    `When it is finished and verified, mark it done in ${file}: set "done": true and "doneAt" to the current time in UTC (ISO 8601) on the entry with this id.`,
+    `When it is finished and verified, end your last reply with this line on its own: ${DONE_MARK} ${idToken(todo.id)}`,
+    `The to-do list then marks it done by itself, so do not edit ${file}.`,
     'If anything needs a decision, ask me before you decide on my behalf.',
   ].filter(Boolean).join('\n')
+}
+
+/** The line a finished task ends Claude's reply with; the plugin marks the task done when it reads it (no file edit, no permission prompt). */
+export const DONE_MARK = 'kit-todos done'
+const idToken = (id: string): string => (isSafeId(id) ? id : JSON.stringify(id))
+
+/** The ids a reply marks done: each line that is only `kit-todos done <id>` (the id bare, or quoted as JSON), in backticks or not. */
+export function doneMarks(text: string): string[] {
+  const ids: string[] = []
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    const m = /^\s*`?kit-todos done (.+?)`?\s*$/.exec(line)
+    if (!m?.[1]) continue
+    const token = m[1].trim()
+    try {
+      const id = token.startsWith('"') ? JSON.parse(token) : token
+      if (typeof id === 'string' && id && !ids.includes(id)) ids.push(id)
+    } catch { /* not a quoted id: skip it */ }
+  }
+  return ids
 }
 
 // --- memories --------------------------------------------------------------------------------------------------

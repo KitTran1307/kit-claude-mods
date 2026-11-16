@@ -8,7 +8,7 @@ import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 import type { CloudRow } from '../types'
 import { STRINGS, changeText, languageFromSetting, languageOption } from './i18n'
 import type { LanguageOption, Strings } from './i18n'
-import { MARK, accountName, changes, fit, fromHub, ghSlug, inScope, parseCommand, snapshot, staleNote, summary, table, waiterNote } from './status'
+import { MARK, accountName, changes, fit, fromHub, ghSlug, githubNote, inScope, parseCommand, snapshot, staleNote, summary, table, waiterNote } from './status'
 import type { HubRow, Scope, ScopeMode, Snapshot } from './status'
 
 const rows = atom({ plugin: 'kit-cloud', key: 'rows' } as const, [] as CloudRow[], { shape: 'rows-1' })
@@ -17,6 +17,7 @@ const updatedAt = atom({ plugin: 'kit-cloud', key: 'updatedAt' } as const, 0)
 const lastError = atom({ plugin: 'kit-cloud', key: 'error' } as const, '')
 const stale = atom({ plugin: 'kit-cloud', key: 'stale' } as const, '')
 const noWaiter = atom({ plugin: 'kit-cloud', key: 'noWaiter' } as const, '')
+const ghProblem = atom({ plugin: 'kit-cloud', key: 'ghProblem' } as const, '')
 
 const REFRESH_MS = 30_000 // a file read: cheap
 const BAND_ROWS = 8
@@ -134,18 +135,19 @@ async function hub($: EngineInterface, args: string[]): Promise<Record<string, u
   }
 }
 
-type HubFile = { rows: HubRow[]; polledMs?: number; waiting?: string[]; queued?: Record<string, number> }
+type HubFile = { rows: HubRow[]; polledMs?: number; waiting?: string[]; queued?: Record<string, number>; errors?: Record<string, unknown> }
 
 async function readHub($: EngineInterface): Promise<HubFile> {
   if (!statePath) statePath = `${await hubDir($)}/state.json`
   if (!(await $.fs.exists(statePath))) return { rows: [] }
-  const parsed = JSON.parse(String(await $.fs.read(statePath))) as { rows?: unknown; hub?: { polledMs?: number }; waiting?: unknown; queued?: unknown }
+  const parsed = JSON.parse(String(await $.fs.read(statePath))) as { rows?: unknown; hub?: { polledMs?: number }; waiting?: unknown; queued?: unknown; errors?: unknown }
   const list = Array.isArray(parsed?.rows) ? (parsed.rows as HubRow[]) : []
   return {
     rows: list.filter(r => r && typeof r === 'object' && r.kind === 'branch' && typeof r.id === 'string'),
     polledMs: typeof parsed?.hub?.polledMs === 'number' ? parsed.hub.polledMs : undefined,
     waiting: Array.isArray(parsed?.waiting) ? parsed.waiting.filter((x): x is string => typeof x === 'string') : undefined,
     queued: parsed?.queued && typeof parsed.queued === 'object' ? (parsed.queued as Record<string, number>) : undefined,
+    errors: parsed?.errors && typeof parsed.errors === 'object' ? (parsed.errors as Record<string, unknown>) : undefined,
   }
 }
 
@@ -162,6 +164,9 @@ async function refresh($: EngineInterface): Promise<void> {
     await update($, stale, () => staleNote(file.polledMs, nowMs, mine.some(r => r.active), t))
     const sid = await $.session.id()
     await update($, noWaiter, () => waiterNote(file.rows, sid, file.waiting, file.queued, t))
+    // The first of this band's repos whose last poll failed, said plainly (sign in, install gh, offline...).
+    const failing = [...new Set(mine.filter(r => r.active).map(r => r.repo))].map(repo => file.errors?.[repo]).find(Boolean)
+    await update($, ghProblem, () => githubNote(failing, t))
     if (settings.notifyInSession) announce($, happened)
     await update($, lastError, () => '')
     await update($, updatedAt, () => nowMs)
@@ -234,7 +239,7 @@ async function runCommand($: EngineInterface, args: string): Promise<string> {
       const where = scope ? (settings.scope === 'repo' ? scope.repo : settings.scope === 'all' ? t.everyAccount : `${scope.account} · ${scope.repo}`) : ''
       const err = await read($, lastError)
       return table(await read($, rows), nowEpoch, where, t) + '\n' + t.listFooter
-        + warn(await read($, stale)) + warn(await read($, noWaiter)) + (err ? `\n(${t.stateUnreadable(err)})` : '')
+        + warn(await read($, stale)) + warn(await read($, noWaiter)) + warn(await read($, ghProblem)) + (err ? `\n(${t.stateUnreadable(err)})` : '')
     }
   }
 }
@@ -299,6 +304,7 @@ async function ownBand($: EngineInterface, e: any, next: (x: any) => Promise<any
     const isOpen = await read($, expanded)
     const staleText = await read($, stale)
     const waiterText = await read($, noWaiter)
+    const ghText = await read($, ghProblem)
     const toggle = () => update($, expanded, v => !v)
     const parts = summary(list, t)
 
@@ -310,6 +316,7 @@ async function ownBand($: EngineInterface, e: any, next: (x: any) => Promise<any
         ))}
         {staleText ? <Text key="stale" color="warning">{` · ⚠ ${staleText}`}</Text> : null}
         {waiterText ? <Text key="waiter" color="warning">{` · ⚠ ${waiterText}`}</Text> : null}
+        {ghText ? <Text key="gh" color="warning">{` · ⚠ ${ghText}`}</Text> : null}
         <Text key="hint" dimColor>{isOpen ? t.hide : t.showSessions}</Text>
       </Button>
     )

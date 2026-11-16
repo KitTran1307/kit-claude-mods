@@ -48,7 +48,7 @@ export function readConfig(options: PluginOptions | undefined): Config {
  * null means not looked at yet, and `auto` then keeps out of the terminal rather than risk showing a status line twice.
  */
 export const drawsOn = (cfg: Config, surface: string, terminalHasStatusLine: boolean | null = false): boolean => {
-  if (surface === 'desktop') return true
+  if (surface === 'desktop' || surface === 'mobile') return true
   if (surface !== 'terminal') return false
   return cfg.surfaces === 'desktop+terminal' || (cfg.surfaces === 'auto' && terminalHasStatusLine === false)
 }

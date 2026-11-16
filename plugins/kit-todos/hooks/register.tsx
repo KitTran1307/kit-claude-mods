@@ -6,7 +6,7 @@ import {
   addSuggestion, checkProposal, claimIds, needsReview, planSuggestions, repoKeyOf, unclaimed, BAND_TEXT_MAX, COLORS, PANE_TEXT_MAX, STATUSES,
   configDirCandidates, countText, dueText, localDay, markDoneAt, newId,
   openTodos, parseIndex, parseTodosForWrite, planBand, planRows, projectSlug, recentlyDone, resolveTodosPath, shortText, soonDaysFrom,
-  statusOf, taskPrompt, usableTodos, validDue, listRowTextCells, textCells,
+  doneMarks, statusOf, taskPrompt, usableTodos, validDue, listRowTextCells, textCells,
 } from './data'
 import type { Status, SuggestionPlan } from './data'
 import { languageFromSetting, languageOption, stringsFor } from './i18n'
@@ -48,6 +48,8 @@ type Config = {
 type Ctx = {
   cfg: Config; home: string; dirs: string[] | null; lang: Lang; t: Strings; accepting: Set<string>
   relay?: string; relayRetryAt?: number; relaying?: boolean
+  /** Whether Node.js 18+ runs here (the suggestion server needs it); undefined: not looked at yet. */
+  node?: Promise<boolean>
 }
 
 function readConfig(options: PluginOptions | undefined): Config {
@@ -386,6 +388,14 @@ function relayedProposals(out: { content?: { type: string; text?: string }[]; is
 }
 
 /** The plugin's MCP server under the name `$.mcp.call` takes, or null while it cannot be reached (retried later). */
+/** Whether Node.js 18 or later runs on this machine, looked at once per load. */
+function hasNode($: EngineInterface, ctx: Ctx): Promise<boolean> {
+  ctx.node ??= $.process.run(['node', '-p', 'process.versions.node.split(".")[0]'], { timeoutMs: 10_000 })
+    .then(r => r.exitCode === 0 && Number(r.stdout.trim()) >= 18)
+    .catch(() => false)
+  return ctx.node
+}
+
 async function relayServer($: EngineInterface, ctx: Ctx): Promise<string | null> {
   if (ctx.relay) return ctx.relay
   const now = await $.clock.now()
@@ -403,6 +413,8 @@ async function relayServer($: EngineInterface, ctx: Ctx): Promise<string | null>
 async function relaySuggestions($: EngineInterface, ctx: Ctx) {
   if (ctx.relaying) return
   ctx.relaying = true
+  // No Node 18+: the server is held back (see mcp.connect below), so there is nothing to ask.
+  if (!(await hasNode($, ctx).catch(() => false))) { ctx.relaying = false; return }
   try {
     const server = await relayServer($, ctx)
     if (!server) return
@@ -447,12 +459,29 @@ export const register: Register = (on, options) => {
     } catch { /* no refresh timer */ }
     // Claude's propose_todo is served by the plugin's MCP server; the band fetches and answers proposals on a timer.
     if (withSuggestions) {
-      try { await $.clock.every(RELAY_EVERY, () => { void relaySuggestions($, ctx) }) } catch { /* Claude's proposals time out */ }
+      try { await $.clock.every(RELAY_EVERY, () => { relaySuggestions($, ctx).catch(() => undefined) }) } catch { /* Claude's proposals time out */ }
     }
     return next(e)
   })
 
+  // The suggestion server runs on Node.js. Without Node 18+ it is held back here, so it is listed as disabled in /mcp
+  // instead of failing at every start; everything else works and Claude simply has no propose_todo tool.
+  on('mcp.connect', async ($, e, next) => {
+    const mine = e.provider.plugin === 'kit-todos' || e.provider.plugin.startsWith('kit-todos@')
+    if (!mine || (await hasNode($, ctx))) return next(e)
+    return { value: { isConnected: false as const, reason: 'disabled' as const, message: 'kit-todos suggestions need Node.js 18 or later; the rest of kit-todos works without it.' } }
+  })
+
   on('turn.complete', async ($, e, next) => {
+    // "Do it now" asks Claude to end its reply with `kit-todos done <id>`: the plugin marks the task itself, so Claude
+    // never edits the to-do file (no permission prompt for a path outside the project). Main loop only; the id must
+    // name an open task.
+    try {
+      const answer = e.agentId === undefined && typeof e.answer === 'string' ? e.answer : ''
+      for (const id of doneMarks(answer)) await markDone($, ctx, { id, index: -1 })
+    } catch (err) {
+      $.ui.log(`kit-todos: done mark not applied: ${String(err)}`, { to: 'debug' })
+    }
     await refresh($, ctx)
     if (ctx.cfg.allowSuggestions) await relaySuggestions($, ctx).catch(() => undefined)
     return next(e)

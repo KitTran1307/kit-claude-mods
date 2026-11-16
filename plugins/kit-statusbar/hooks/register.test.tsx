@@ -44,7 +44,7 @@ const colorOf = async (ui: Mounted, needle: string) =>
   (await ui.findAll({ type: 'Text' })).find(t => t.text.includes(needle))?.props.backgroundColor
 
 // ---------- the band ----------
-for (const surface of ['terminal', 'desktop'] as const) {
+for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
   test(`the band shows every field of the status line on the ${surface}`, { options: BOTH }, async ($, on) => {
     seed(on)
     const ui = await $.ui.mount({ ...BAND, surface })

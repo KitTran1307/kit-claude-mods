@@ -28,6 +28,11 @@ export type Strings = {
   pilotNotPolled: string
   pilotStopped: (minutes: number) => string
   noWaiter: (owned: number, unread: number) => string
+  ghSignedOut: string
+  ghMissing: string
+  ghOffline: string
+  ghNoAccess: string
+  ghOther: string
   // Table
   tableNone: (where: string) => string
   tableHead: (n: number, where: string) => string
@@ -86,6 +91,11 @@ const en: Strings = {
   pilotNotPolled: 'cloud-pilot has not polled yet',
   pilotStopped: m => `cloud-pilot stopped ${m}m ago (status may be old)`,
   noWaiter: (owned, unread) => `no cloud-pilot wait running for ${owned} tracked session${owned > 1 ? 's' : ''}` + (unread ? ` (${unread} event${unread > 1 ? 's' : ''} unread)` : '') + ': ask Claude to start it again',
+  ghSignedOut: 'GitHub CLI is signed out: run gh auth login',
+  ghMissing: 'GitHub CLI (gh) is not installed: get it at cli.github.com',
+  ghOffline: 'GitHub cannot be reached: status updates when you are back online',
+  ghNoAccess: 'your gh login cannot read this repo',
+  ghOther: 'GitHub could not be read (see /cloud doctor)',
   tableNone: where => `No cloud sessions in the last 24 hours${where}.`,
   tableHead: (n, where) => `Cloud sessions, last 24 hours${where}: ${n}`,
   colId: 'id',
@@ -146,6 +156,11 @@ const vi: Strings = {
   pilotNotPolled: 'cloud-pilot chưa kiểm tra lần nào',
   pilotStopped: m => `cloud-pilot đã dừng ${m} phút trước (trạng thái có thể cũ)`,
   noWaiter: (owned, unread) => `không có cloud-pilot wait nào đang chạy cho ${owned} phiên đang theo dõi` + (unread ? ` (${unread} tin chưa đọc)` : '') + ': nhờ Claude chạy lại',
+  ghSignedOut: 'GitHub CLI chưa đăng nhập: chạy gh auth login',
+  ghMissing: 'chưa cài GitHub CLI (gh): tải ở cli.github.com',
+  ghOffline: 'không kết nối được GitHub: có mạng lại sẽ tự cập nhật',
+  ghNoAccess: 'tài khoản gh hiện tại không đọc được repo này',
+  ghOther: 'không đọc được GitHub (xem /cloud doctor)',
   tableNone: where => `Không có cloud session nào trong 24 giờ qua${where}.`,
   tableHead: (n, where) => `Cloud session trong 24 giờ qua${where}: ${n}`,
   colId: 'mã',

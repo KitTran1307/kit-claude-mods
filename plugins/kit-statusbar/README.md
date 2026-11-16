@@ -27,7 +27,8 @@ and starts again with every new session.
 Colors tell you the pace: a bar turns yellow from 70% and red from 90%; the weekly bar also turns yellow when you are
 above your daily budget and red when you are a full day's budget over it.
 
-It works in both the Claude desktop app and the `claude` CLI. By default (`surfaces: auto`) the desktop app always
+It works in the Claude desktop and mobile apps and in the `claude` CLI (the VS Code extension draws no band above the
+prompt, so nothing shows there). By default (`surfaces: auto`) the desktop and mobile apps always
 gets the band, and the terminal gets it too unless you already have a status line set up there (a `statusLine` in
 your user or project settings), so you never see the same facts twice. When it finds one, it asks you once in the
 terminal: **Keep only my status line** (saves `surfaces: desktop`) or **Show both** (saves `surfaces:
