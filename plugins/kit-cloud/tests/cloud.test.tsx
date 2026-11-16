@@ -14,7 +14,7 @@ const row = (over: Partial<HubRow> = {}): HubRow => ({
   title: 'Fix the HUD', active: true, account: 'work', repoRoot: '/work/demo', createdMs: NOW_MS - 300_000,
   state: 'working', detail: 'just started', ...over,
 })
-const BAND = { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 120, scroll: { offset: 0, bodyRows: 20 }, view: {} }
+const BAND = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 20, bodyColumns: 120, scroll: { offset: 0, bodyRows: 20 }, view: {} }
 
 type Engine = { argv: string[][]; env: Record<string, string>[]; text: () => string; toasts: string[]; notes: Array<{ text: string; title?: string }> }
 

@@ -3,7 +3,7 @@
 See your Claude Code **cloud sessions** right above the prompt, in the CLI and in the desktop app: which are working,
 which ask you something, which opened a PR, whose CI failed and which went silent, with a link to each.
 
-The band (top line), here with kit-statusbar and kit-todos under it, in the Claude Code CLI:
+The band (top line), here with usage-bar and kit-todos under it, in the Claude Code CLI:
 
 ![The kit-cloud band above the prompt](https://raw.githubusercontent.com/KitTran1307/kit-claude-mods/main/docs/images/terminal-bands.png)
 
@@ -29,7 +29,7 @@ cloud session asks you a question, opens a PR, fails CI, goes silent or finishes
   Without them the plugin stays quiet; `/cloud doctor` says what is missing.
 - The repo's `origin` remote on GitHub. Cloud sessions push to `claude/...` branches there.
 
-**Network:** unlike kit-statusbar and kit-todos, this plugin uses the network. kit-cloud-pilot uses the GitHub API
+**Network:** unlike usage-bar and kit-todos, this plugin uses the network. kit-cloud-pilot uses the GitHub API
 through your own `gh` login, and nothing else. By default (`autoWatch`), it watches each GitHub repository you open
 Claude Code in for new `claude/*` branches. Set `autoWatch` to `false` in `/config` to follow only the sessions you
 track yourself.

@@ -1,9 +1,19 @@
-# kit-statusbar
+# Usage Bar
 
-A status band for Claude Code, drawn above the prompt box. The Claude desktop app has no status line of its own, so
-this plugin adds one: three rows in the Tokyo Night colors that show where you are and how much of your plan is left.
+**Know how much of your Claude plan is left, before you hit the limit.** Usage Bar is a status band drawn above the
+prompt box: your 5-hour and weekly limits with reset countdowns and a daily pace for the week, plus the repo, model,
+effort and context. The Claude desktop app has no status line of its own, so this is the one place it shows there.
 
-![kit-statusbar in the Claude Code CLI: repo, model, context, account, 5-hour and weekly limits](https://raw.githubusercontent.com/KitTran1307/kit-claude-mods/main/docs/images/statusbar-terminal.png)
+![Usage Bar: the 5-hour and weekly limits filling up with reset countdowns](https://raw.githubusercontent.com/KitTran1307/kit-claude-mods/main/docs/images/usage-bar.gif)
+
+*Drawn from the plugin's own render output, with demo data.* Plans without a 5-hour window, API keys and third-party
+providers simply show what they have.
+
+```
+/plugin install usage-bar --marketplace KitTran1307/kit-claude-mods
+```
+
+![usage-bar in the Claude Code CLI: repo, model, context, account, 5-hour and weekly limits](https://raw.githubusercontent.com/KitTran1307/kit-claude-mods/main/docs/images/statusbar-terminal.png)
 
 *Real screenshot in the CLI (email hidden with `showEmail: false`, no session title yet).* In full it reads:
 
@@ -49,7 +59,7 @@ question comes back next session.
 In a terminal session:
 
 ```
-/plugin install kit-statusbar --marketplace KitTran1307/kit-claude-mods
+/plugin install usage-bar --marketplace KitTran1307/kit-claude-mods
 ```
 
 Answer `y` to add the marketplace, then pick a scope (the user scope is the first one). A screen then lets you set
@@ -58,13 +68,13 @@ the options (you can change them later, see below).
 From a shell (Claude Code 2.1.292 or later):
 
 ```
-claude plugin install kit-statusbar --marketplace KitTran1307/kit-claude-mods
+claude plugin install usage-bar --marketplace KitTran1307/kit-claude-mods
 ```
 
 In the Claude desktop app: click **+** next to the prompt box, then **Plugins**, then **Add marketplace** with
-`KitTran1307/kit-claude-mods`, then **Add plugin** on `kit-statusbar`.
+`KitTran1307/kit-claude-mods`, then **Add plugin** on `usage-bar`.
 
-Or let Claude do it: tell Claude "Install the kit-statusbar plugin from the KitTran1307/kit-claude-mods
+Or let Claude do it: tell Claude "Install the usage-bar plugin from the KitTran1307/kit-claude-mods
 marketplace". The repository's `INSTALL.md` has the steps Claude follows.
 
 A plugin installed from a terminal at the user scope also loads in the local sessions the desktop app starts.
@@ -85,14 +95,14 @@ A plugin installed from a terminal at the user scope also loads in the local ses
 Set them in any of these ways:
 
 - At install time, on the screen the installer shows.
-- In the `/config` menu: each option is a row called `kit-statusbar.<option>`. A change reloads the plugin.
+- In the `/config` menu: each option is a row called `usage-bar.<option>`. A change reloads the plugin.
 - In `~/.claude/settings.json` (or `%USERPROFILE%\.claude\settings.json` on Windows), under `pluginConfigs`. The key
-  is the plugin's id, `kit-statusbar@<marketplace>`, and the values go in an `options` object:
+  is the plugin's id, `usage-bar@<marketplace>`, and the values go in an `options` object:
 
   ```json
   {
     "pluginConfigs": {
-      "kit-statusbar@kit-claude-mods": {
+      "usage-bar@kit-claude-mods": {
         "options": {
           "surfaces": "desktop+terminal",
           "weeklyBudgetPerDay": 20,
@@ -104,8 +114,8 @@ Set them in any of these ways:
   ```
 
   The part after `@` is the name of the marketplace the plugin came from; `claude plugin list` prints the exact id.
-  A plugin loaded straight from a folder (`claude --plugin-dir`) is keyed `kit-statusbar@inline`.
-- `claude plugin configure kit-statusbar` shows the options and which are unset.
+  A plugin loaded straight from a folder (`claude --plugin-dir`) is keyed `usage-bar@inline`.
+- `claude plugin configure usage-bar` shows the options and which are unset.
 
 ## The account label and color
 
@@ -162,7 +172,7 @@ MB.
 ## Uninstall
 
 ```
-claude plugin uninstall kit-statusbar
+claude plugin uninstall usage-bar
 ```
 
 In a terminal session, `/plugin` opens the same list. To drop the marketplace as well: `claude plugin marketplace

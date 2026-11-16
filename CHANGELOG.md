@@ -1,5 +1,23 @@
 # Changelog
 
+## usage-bar 2.0.0, kit-cloud 2.4.2, kit-todos 1.6.2
+
+### usage-bar (was kit-statusbar)
+
+- **kit-statusbar is now Usage Bar** (`usage-bar`), named for what most people install it for: seeing your 5-hour and
+  weekly limits, with reset countdowns and a daily pace, before you hit them. Everything else works as before; the
+  plugin now has its own icon, and the README opens with what it looks like.
+- **If you had kit-statusbar installed**, switch once (your options start from their defaults again):
+
+  ```
+  claude plugin uninstall kit-statusbar
+  claude plugin install usage-bar --marketplace KitTran1307/kit-claude-mods
+  ```
+
+### kit-cloud, kit-todos
+
+- Test data only (the band's props now carry `isCollapsed`, as Claude Code's types expect). No change in behaviour.
+
 ## kit-cloud 2.4.1, kit-statusbar 1.4.1, kit-todos 1.6.1, kit-cloud-pilot 1.3.2
 
 Security fixes from a full review. Updating is recommended.

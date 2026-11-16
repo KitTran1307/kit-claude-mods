@@ -14,7 +14,7 @@ const SLUG = "-work-my-project";
 
 let root;
 before(() => {
-  root = mkdtempSync(join(tmpdir(), "kit-statusbar-"));
+  root = mkdtempSync(join(tmpdir(), "usage-bar-"));
 });
 after(() => {
   rmSync(root, { recursive: true, force: true });

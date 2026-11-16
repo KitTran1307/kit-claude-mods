@@ -2,7 +2,7 @@
 
 These steps are written for Claude Code to follow when a person asks it to install one or more of these plugins.
 A person can follow them too. Install only the plugins the person asked for; if they said "all", that is
-`kit-cloud`, `kit-statusbar`, `kit-todos` and `kit-graphite`.
+`kit-cloud`, `usage-bar`, `kit-todos` and `kit-graphite`.
 
 ## 0. Let the person choose
 
@@ -11,7 +11,8 @@ pick several (in Claude Code, a multiple-choice question with several answers al
 
 - **kit-cloud**: your cloud sessions above the prompt, with a notification when one needs you. Needs Node 18+ and a
   signed-in GitHub CLI (`gh`); installs kit-cloud-pilot with it.
-- **kit-statusbar**: a status bar (repo, model, context, usage limits), also in the desktop app. Needs nothing.
+- **usage-bar** (Usage Bar): your 5-hour and weekly limits, context and model at a glance, also in the desktop app.
+  Needs nothing.
 - **kit-todos**: your project's to-dos above the prompt, and tasks Claude suggests for you to approve. Needs nothing; Claude's suggestions need Node 18+.
 - **kit-graphite**: a graphite theme for the desktop and mobile apps (the terminal keeps its look). Needs Claude
   Code 2.1.323 or later.
@@ -69,7 +70,7 @@ Run these yourself (shell commands), and report what they printed:
 Slash commands typed in a session are the person's to run, not yours: do not claim you ran them. Tell the person to
 start a new session (or type `/reload-plugins`) and try `/todo` and `/cloud` there.
 
-- kit-statusbar: it appears above the prompt in the person's next session, in the desktop app always and in the
+- usage-bar: it appears above the prompt in the person's next session, in the desktop app always and in the
   terminal unless they already have a status line set up there (its `surfaces` option changes that).
 
 ## 4. Tell the person
@@ -77,12 +78,12 @@ start a new session (or type `/reload-plugins`) and try `/todo` and `/cloud` the
 One short message: what was installed, what each one shows and where, the one command to try for each (`/todo`,
 `/cloud`), anything still missing (for kit-cloud), and that options live in `/config`. If kit-cloud was installed,
 say that it calls the GitHub API through their `gh` login and by default watches each GitHub repo they open Claude
-Code in for `claude/*` branches (`autoWatch` in `/config` turns that off); kit-statusbar and kit-todos use no network.
+Code in for `claude/*` branches (`autoWatch` in `/config` turns that off); usage-bar and kit-todos use no network.
 
 ## Notes
 
 - Options are per plugin; see each plugin's README for the list and the `pluginConfigs` form for settings.json.
-- kit-statusbar and kit-todos use no network. kit-cloud calls the GitHub API through kit-cloud-pilot and the person's
+- usage-bar and kit-todos use no network. kit-cloud calls the GitHub API through kit-cloud-pilot and the person's
   own `gh` login, and nothing else; no plugin sends data to any other service. See SECURITY.md.
 - To remove one: `/plugin uninstall <plugin>` (kit-cloud-pilot: also `cloud-pilot stop` and delete
   `~/.claude/cloud-pilot`).

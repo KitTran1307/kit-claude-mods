@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          files=(plugins/kit-statusbar/scripts/*.test.mjs)
+          files=(plugins/usage-bar/scripts/*.test.mjs)
           if [ ${#files[@]} -gt 0 ]; then node --test "${files[@]}"; fi
 
   install:
@@ -61,12 +61,12 @@ jobs:
           CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-config
         run: |
           claude plugin marketplace add "$GITHUB_WORKSPACE"
-          for p in kit-cloud kit-statusbar kit-todos; do claude plugin install "$p@kit-claude-mods"; done
+          for p in kit-cloud usage-bar kit-todos; do claude plugin install "$p@kit-claude-mods"; done
           claude plugin update kit-todos@kit-claude-mods
           claude plugin list --json > "$RUNNER_TEMP/plugins.json"
           node -e '
             const list = require(process.argv[1]);
-            const want = ["kit-cloud", "kit-cloud-pilot", "kit-statusbar", "kit-todos"].map(n => `${n}@kit-claude-mods`);
+            const want = ["kit-cloud", "kit-cloud-pilot", "usage-bar", "kit-todos"].map(n => `${n}@kit-claude-mods`);
             const bad = want.filter(id => { const p = list.find(x => x.id === id); return !p || !p.enabled || p.error || (p.errors && p.errors.length); });
             if (bad.length) { console.error("not installed and enabled:", bad, JSON.stringify(list, null, 2)); process.exit(1); }
             console.log(want.map(id => `${id} ${list.find(x => x.id === id).version}`).join("\n"));

@@ -1,7 +1,7 @@
 {
-  "name": "kit-statusbar",
-  "version": "1.4.1",
-  "description": "A status bar for Claude Code in the desktop app and the CLI: repo, model, effort, context, account, session title, 5-hour and weekly limits.",
+  "name": "usage-bar",
+  "version": "2.0.0",
+  "description": "See your 5-hour and weekly limits, context and model at a glance, in the Claude desktop app too: a status bar with reset countdowns and a daily pace for the week.",
   "author": {
     "name": "KitTran1307"
   },
@@ -9,10 +9,11 @@
   "repository": "https://github.com/KitTran1307/kit-claude-mods",
   "license": "MIT",
   "keywords": [
-    "statusline",
-    "status-bar",
     "usage",
     "limits",
+    "rate-limits",
+    "statusline",
+    "status-bar",
     "desktop"
   ],
   "types": "./types/index.d.ts",

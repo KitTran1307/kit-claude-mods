@@ -1,4 +1,4 @@
-// kit-statusbar: a Tokyo Night status band above the prompt, three rows:
+// usage-bar: a Tokyo Night status band above the prompt, three rows:
 //   repo · model · EFFORT · ctx bar %
 //   account badge · account email · session title
 //   5H bar % ↻ reset · WEEK bar % / budget% ↻ reset
@@ -28,14 +28,14 @@ const EMPTY: Info = {
 }
 const TICK_MS = 60_000
 
-const info = atom({ plugin: 'kit-statusbar', key: 'info' } as const, EMPTY)
-const now = atom({ plugin: 'kit-statusbar', key: 'now' } as const, 0)
+const info = atom({ plugin: 'usage-bar', key: 'info' } as const, EMPTY)
+const now = atom({ plugin: 'usage-bar', key: 'now' } as const, 0)
 // Whether a status line is configured for the terminal (auto mode then leaves the terminal to it); null: not looked
 // at yet (a fresh load, a /reload-plugins), and the terminal is left alone until it is.
-const statusLine = atom({ plugin: 'kit-statusbar', key: 'statusLine' } as const, null as boolean | null)
+const statusLine = atom({ plugin: 'usage-bar', key: 'statusLine' } as const, null as boolean | null)
 
 // The band's language when `language` is auto: what the `language` setting said at session start; null: not looked at yet.
-const lang = atom({ plugin: 'kit-statusbar', key: 'lang' } as const, null as Lang | null)
+const lang = atom({ plugin: 'usage-bar', key: 'lang' } as const, null as Lang | null)
 const TOAST_MS = 10_000
 
 /** Reads the `language` setting of Claude Code once; a failed read is English. */
@@ -108,7 +108,7 @@ async function confirmBesideStatusLine($: EngineInterface, cfg: Config, isIntera
       .catch(() => t[STATUS_LINE_ANSWERS[0].key])
     const surfaces = surfacesForAnswer(answer)
     if (!surfaces) return
-    const set = await $.config.set({ key: 'kit-statusbar.surfaces', value: surfaces })
+    const set = await $.config.set({ key: 'usage-bar.surfaces', value: surfaces })
     if (set.deny) warn($, 'could not save the surfaces answer', set.deny)
   } catch (err) {
     warn($, 'status line question skipped', err)

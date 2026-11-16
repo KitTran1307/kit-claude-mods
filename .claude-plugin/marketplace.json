@@ -26,9 +26,9 @@
       "category": "productivity"
     },
     {
-      "name": "kit-statusbar",
-      "source": "./plugins/kit-statusbar",
-      "description": "A status bar for Claude Code in the desktop app and the CLI: repo, model, effort, context, account, session title, 5-hour and weekly limits.",
+      "name": "usage-bar",
+      "source": "./plugins/usage-bar",
+      "description": "See your 5-hour and weekly limits, context and model at a glance, in the Claude desktop app too: a status bar with reset countdowns and a daily pace for the week.",
       "category": "productivity"
     },
     {

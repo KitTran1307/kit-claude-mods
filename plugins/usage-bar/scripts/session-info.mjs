@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Optional helper of the kit-statusbar plugin, for what the plugin cannot read by itself: a session transcript or a
+// Optional helper of the usage-bar plugin, for what the plugin cannot read by itself: a session transcript or a
 // login record over 4 MB. Plain Node, no dependencies; Windows, macOS and Linux. Prints one JSON object:
 //   {"title","transcriptEmail","loginEmail","email","transcript","hookErrors"}   (a missing value is "")
 //

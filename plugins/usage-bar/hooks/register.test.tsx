@@ -8,11 +8,12 @@ const SID = '0f9e8d7c-1111-4222-8333-444455556666'
 const AT = (ms: number) => new Date(ms).toISOString()
 
 const BAND = {
-  plugin: 'kit-statusbar',
+  plugin: 'usage-bar',
   component: 'AbovePrompt',
   requestId: 'above-prompt',
   props: {
     hasSurvey: false,
+    isCollapsed: false,
     isWorking: false,
     maxRows: 10,
     bodyColumns: 120,
@@ -133,7 +134,7 @@ for (const [answer, surfaces] of [['Keep only my status line', 'desktop'], ['Sho
     await settle()
     expect(seen.asked).toHaveLength(1)
     expect(seen.asked[0]).toMatch(QUESTION)
-    expect(seen.set).toEqual([{ key: 'kit-statusbar.surfaces', value: surfaces }])
+    expect(seen.set).toEqual([{ key: 'usage-bar.surfaces', value: surfaces }])
     expect((await band($, 'terminal')).text).toBe('engine') // until the saved answer reloads the plugin
   })
 }
@@ -143,7 +144,7 @@ test('a dismissed question keeps the status line and is saved, so it is not aske
   const seen = asks(on, null)
   await start($)
   await settle()
-  expect(seen.set).toEqual([{ key: 'kit-statusbar.surfaces', value: 'desktop' }])
+  expect(seen.set).toEqual([{ key: 'usage-bar.surfaces', value: 'desktop' }])
   expect((await band($, 'terminal')).text).toBe('engine')
 })
 
@@ -1055,5 +1056,5 @@ test('language: the status line question is asked in Vietnamese and its answer s
   await settle()
   expect(seen.asked).toHaveLength(1)
   expect(seen.asked[0]).toMatch(/đã có status line/)
-  expect(seen.set).toEqual([{ key: 'kit-statusbar.surfaces', value: 'desktop+terminal' }])
+  expect(seen.set).toEqual([{ key: 'usage-bar.surfaces', value: 'desktop+terminal' }])
 })

@@ -5,19 +5,30 @@
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757.svg)](https://docs.claude.com/en/docs/claude-code/plugins)
 [![Windows · macOS · Linux](https://img.shields.io/badge/os-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-555.svg)](#)
 
+**Know how much of your Claude plan is left, before you hit the limit.** Usage Bar shows your 5-hour and weekly
+limits with reset countdowns and a daily pace for the week, right above the prompt, in the desktop app too:
+
+![Usage Bar: repo, model, context, then the 5-hour and weekly limits filling up with reset countdowns](docs/images/usage-bar.gif)
+
+*Drawn from the plugin's own render output, with demo data.* Install it in a terminal session:
+
+```
+/plugin install usage-bar --marketplace KitTran1307/kit-claude-mods
+```
+
 Four small mods for [Claude Code](https://claude.com/claude-code) that add what the interface leaves out. They work
 in the CLI and in the Claude desktop app, on Windows, macOS and Linux, in English or Vietnamese.
 
 | Plugin | What you get | Needs |
 | --- | --- | --- |
 | [**kit-cloud**](plugins/kit-cloud) | A band above the prompt with your **cloud sessions**: working, asking you something, PR open, CI failed, silent, each with its link, and a notification when one needs you. `/cloud` for the table. | Node 18+, GitHub CLI `gh` signed in |
-| [**kit-statusbar**](plugins/kit-statusbar) | A **status bar** for the desktop app (which has none) and the CLI: repo, model, effort, context use, account, session title, 5-hour and weekly limits with reset countdowns, and a warning when a hook keeps failing. | nothing |
+| [**Usage Bar**](plugins/usage-bar) (`usage-bar`) | Your **5-hour and weekly limits** at a glance, with reset countdowns and a daily pace, plus repo, model, effort, context, account and session title: a status bar for the desktop app (which has none) and the CLI. | nothing |
 | [**kit-todos**](plugins/kit-todos) | Your project's **open to-dos** above the prompt, most urgent first, with *Do it now* and *Draft* buttons, plus the project's newest memories. `/todo` to add and finish tasks; Claude can suggest tasks for you to approve. | nothing (Node 18+ for Claude's suggestions) |
 | [**kit-graphite**](plugins/kit-graphite) | A **graphite theme** for the desktop and mobile apps: charcoal grays, a dot field frozen mid-wave and a small pixel comet; a matching Windows Terminal look. | Claude Code 2.1.323+ |
 
 The three bands together in the Claude Code CLI (real screenshot, demo data):
 
-![kit-cloud, kit-statusbar and kit-todos above the prompt in the Claude Code CLI](docs/images/terminal-bands.png)
+![kit-cloud, usage-bar and kit-todos above the prompt in the Claude Code CLI](docs/images/terminal-bands.png)
 
 Each one is independent: install only what you want. When several are installed their bands stack above the prompt
 and share its height.
@@ -41,7 +52,7 @@ the scope, user is the usual one):
 
 ```
 /plugin install kit-cloud --marketplace KitTran1307/kit-claude-mods
-/plugin install kit-statusbar --marketplace KitTran1307/kit-claude-mods
+/plugin install usage-bar --marketplace KitTran1307/kit-claude-mods
 /plugin install kit-todos --marketplace KitTran1307/kit-claude-mods
 /plugin install kit-graphite --marketplace KitTran1307/kit-claude-mods
 ```
@@ -81,7 +92,7 @@ Every plugin has options (which surfaces to draw on, where the to-do file lives,
 
 | Plugin | Network |
 | --- | --- |
-| kit-statusbar | None. Reads local files only: this session's transcript and your login record (for the email). |
+| usage-bar | None. Reads local files only: this session's transcript and your login record (for the email). |
 | kit-todos | None. Reads and writes your to-do file, reads your memory index. |
 | kit-cloud | **Uses the GitHub API** through kit-cloud-pilot and your own `gh` login, and nothing else. By default (`autoWatch`), it watches each GitHub repository you open Claude Code in for new `claude/*` branches. Set `autoWatch` to `false` in `/config` to follow only the sessions you track yourself. |
 

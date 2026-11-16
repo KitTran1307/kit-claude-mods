@@ -29,7 +29,7 @@ const byId = (id: string) => TODOS.find(t => t.id === id)!
 const BAND = {
   plugin: 'kit-todos',
   component: 'AbovePrompt',
-  props: { hasSurvey: false, isWorking: false, maxRows: 40, bodyColumns: 160, scroll: { offset: 0, bodyRows: 40 }, view: {} },
+  props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 40, bodyColumns: 160, scroll: { offset: 0, bodyRows: 40 }, view: {} },
 } as const
 const PANE = {
   plugin: 'kit-todos',

@@ -20,6 +20,6 @@ export type Info = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'kit-statusbar': { info: Info; now: number; statusLine: boolean | null; lang: 'en' | 'vi' | null }
+    'usage-bar': { info: Info; now: number; statusLine: boolean | null; lang: 'en' | 'vi' | null }
   }
 }
