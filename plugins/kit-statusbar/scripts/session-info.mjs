@@ -137,11 +137,14 @@ function hookErrors(text) {
   let last = null;
   for (const type of HOOK_ERROR_TYPES) {
     const key = `"type":"${type}"`;
-    for (let at = text.indexOf(key); at >= 0; at = text.indexOf(key, at + key.length)) {
+    // After a hit the search goes on from the end of its line: a line packed with keys is looked at once (linear).
+    let next = 0;
+    for (let at = text.indexOf(key); at >= 0; at = text.indexOf(key, next)) {
       const start = text.lastIndexOf("\n", at) + 1;
+      const end = text.indexOf("\n", at);
+      next = end < 0 ? text.length : end + 1;
       if (seen.has(start)) continue;
       seen.add(start);
-      const end = text.indexOf("\n", at);
       const entry = parseObject(text.slice(start, end < 0 ? undefined : end));
       const att = record(entry?.attachment) ?? entry;
       if (!att || !HOOK_ERROR_TYPES.includes(att.type)) continue;

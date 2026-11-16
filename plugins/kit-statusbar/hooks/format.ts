@@ -84,7 +84,8 @@ export function toLimit(limits: readonly SessionRateLimit[], kind: string): Limi
 
 // One line of at most `room` cells, cut with an ellipsis; too little room is no text at all.
 export function fitText(text: string, room: number): string {
-  const chars = [...text.replace(/\s+/g, ' ').trim()]
+  // Control characters (ESC, OSC...) never reach the screen: a hook's stderr or a title cannot drive the terminal.
+  const chars = [...text.replace(/\s+/g, ' ').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim()]
   if (Number.isNaN(room) || room < 4) return ''
   return chars.length <= room ? chars.join('') : `${chars.slice(0, room - 1).join('')}…`
 }

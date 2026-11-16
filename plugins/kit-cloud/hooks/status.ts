@@ -165,7 +165,8 @@ export const stateWord = (state: CloudState, t: Strings = EN): string => t.word[
 
 /** Cut to a width by characters, with an ellipsis; pads to the width. */
 export function fit(s: string, w: number): string {
-  const chars = [...String(s).replace(/[\r\n\t]+/g, ' ')]
+  // Control characters (ESC, OSC...) from GitHub text never reach the screen.
+  const chars = [...String(s).replace(/[\r\n\t]+/g, ' ').replace(/[\u0000-\u001F\u007F-\u009F]/g, '')]
   return (chars.length > w ? chars.slice(0, Math.max(0, w - 1)).join('') + '…' : chars.join('')).padEnd(w)
 }
 

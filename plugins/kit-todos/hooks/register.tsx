@@ -50,6 +50,8 @@ type Ctx = {
   relay?: string; relayRetryAt?: number; relaying?: boolean
   /** Whether Node.js 18+ runs here (the suggestion server needs it); undefined: not looked at yet. */
   node?: Promise<boolean>
+  /** Ids handed to Claude by "Do it now" or "Draft" this load, the only ones a reply may mark done. */
+  handedOff: Set<string>
 }
 
 function readConfig(options: PluginOptions | undefined): Config {
@@ -300,6 +302,7 @@ async function hideToday($: EngineInterface) {
 
 async function doNow($: EngineInterface, ctx: Ctx, todo: Todo, shownCells = Infinity) {
   const file = await todosPath($, ctx)
+  ctx.handedOff.add(todo.id) // only a task handed to Claude here may be marked done by its reply
   if (needsReview(todo, shownCells)) {
     // The prompt holds text the card did not show: put it in the prompt box to read first.
     await $.prompt.fill({ text: taskPrompt(todo, file), mode: 'replace' })
@@ -311,6 +314,7 @@ async function doNow($: EngineInterface, ctx: Ctx, todo: Todo, shownCells = Infi
 }
 
 async function draft($: EngineInterface, ctx: Ctx, todo: Todo) {
+  ctx.handedOff.add(todo.id)
   await $.prompt.fill({ text: taskPrompt(todo, await todosPath($, ctx)), mode: 'replace' })
 }
 
@@ -440,7 +444,7 @@ async function relaySuggestions($: EngineInterface, ctx: Ctx) {
 // --- the module ------------------------------------------------------------------------------------------------
 
 export const register: Register = (on, options) => {
-  const ctx: Ctx = { cfg: readConfig(options), home: '', dirs: null, lang: 'en', t: stringsFor('en'), accepting: new Set() }
+  const ctx: Ctx = { cfg: readConfig(options), home: '', dirs: null, lang: 'en', t: stringsFor('en'), accepting: new Set(), handedOff: new Set() }
 
   on('session.start', async ($, e, next) => {
     // The to-do list never blocks a session from starting.
@@ -478,7 +482,14 @@ export const register: Register = (on, options) => {
     // name an open task.
     try {
       const answer = e.agentId === undefined && typeof e.answer === 'string' ? e.answer : ''
-      for (const id of doneMarks(answer)) await markDone($, ctx, { id, index: -1 })
+      // A reply can only finish a task this session handed to Claude ("Do it now" or "Draft"), once: text in a repo
+      // or a tool output that tells Claude to print the line cannot touch any other task.
+      for (const id of doneMarks(answer)) {
+        if (!ctx.handedOff.has(id)) continue
+        ctx.handedOff.delete(id)
+        const done = await markDone($, ctx, { id, index: -1 })
+        if (!done.ok) ctx.handedOff.add(id) // the write failed: the next reply may still mark it
+      }
     } catch (err) {
       $.ui.log(`kit-todos: done mark not applied: ${String(err)}`, { to: 'debug' })
     }

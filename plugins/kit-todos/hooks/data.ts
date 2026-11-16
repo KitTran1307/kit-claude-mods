@@ -179,7 +179,8 @@ export function countText(todos: Todo[], now: number, soonDays: number = DEFAULT
 
 /** One line of at most `max` characters: whitespace runs become one space, a longer text ends in an ellipsis. */
 export function shortText(text: string, max: number): string {
-  const flat = text.slice(0, max * 4).replace(/\s+/g, ' ').trim()
+  // Control characters (ESC, OSC...) never reach the screen: a hostile list cannot move the cursor or set the title.
+  const flat = text.slice(0, max * 4).replace(/\s+/g, ' ').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim()
   if (flat.length <= max && text.length <= max * 4) return flat
   const cut = flat.slice(0, max - 1).replace(/[\uD800-\uDBFF]$/, '').trimEnd()
   return `${cut}…`
@@ -263,8 +264,20 @@ export function newId(list: unknown[], now: number): string {
 export const SAFE_ID = /^[A-Za-z0-9._-]{1,64}$/
 export const isSafeId = (id: unknown): id is string => typeof id === 'string' && SAFE_ID.test(id)
 
-/** Characters a card does not show plainly: control characters (not tab or line breaks), zero-width and bidi marks, tag characters. */
-const HIDDEN_CHARS = /[\u{0}-\u{8}\u{B}\u{C}\u{E}-\u{1F}\u{7F}-\u{9F}\u{AD}\u{61C}\u{180E}\u{200B}-\u{200F}\u{202A}-\u{202E}\u{2060}-\u{206F}\u{FEFF}\u{FFF9}-\u{FFFB}\u{E0000}-\u{E007F}]/u
+/**
+ * Characters a card does not show plainly, by Unicode category so new ones are covered too: controls (not tab or line
+ * breaks), every format character (zero-width, bidi, tags), private use and unassigned code points; plus the
+ * invisible characters that are letters or marks: variation selectors (which can carry hidden bytes), Hangul and
+ * Braille blanks, the combining grapheme joiner, Mongolian, Khmer and Khitan invisibles.
+ * Emoji stay visible: one emoji selector (U+FE0E/FE0F) right after a visible character (❤️ ✔️ 1️⃣), and a zero-width
+ * joiner between two emoji (👨‍👩‍👧). A selector after nothing visible, or a run of selectors (how bytes get hidden in
+ * them), still counts as hidden.
+ */
+const SELECTORS = '\\u{FE00}-\\u{FE0F}\\u{E0100}-\\u{E01EF}'
+const EMOJI_SELECTOR = `(?<![\\s\\p{Cc}\\p{Cf}${SELECTORS}])(?<=.)[\\u{FE0E}\\u{FE0F}](?![${SELECTORS}])`
+const EMOJI_JOINER = '(?<=\\p{Extended_Pictographic}[\\u{FE0F}\\u{1F3FB}-\\u{1F3FF}]?)\\u{200D}(?=\\p{Extended_Pictographic})'
+const HIDDEN_SOURCE = `(?:(?![\\t\\n\\r])\\p{Cc})|(?!${EMOJI_SELECTOR}|${EMOJI_JOINER})[\\p{Cf}\\p{Co}\\p{Cn}\\u{34F}\\u{115F}\\u{1160}\\u{17B4}\\u{17B5}\\u{180B}-\\u{180F}\\u{2800}\\u{3164}\\u{FFA0}\\u{16FE4}${SELECTORS}]`
+const HIDDEN_CHARS = new RegExp(HIDDEN_SOURCE, 'u')
 /** Line breaks: a card or a list row shows the first line, so a second one could go unseen. */
 const LINE_BREAKS = /[\r\n\u{2028}\u{2029}]/u
 
@@ -326,19 +339,36 @@ export function taskPrompt(todo: Todo, file: string): string {
 export const DONE_MARK = 'kit-todos done'
 const idToken = (id: string): string => (isSafeId(id) ? id : JSON.stringify(id))
 
-/** The ids a reply marks done: each line that is only `kit-todos done <id>` (the id bare, or quoted as JSON), in backticks or not. */
+/**
+ * The id a reply marks done: only its last non-empty line, outside a code block, when that line is just
+ * `kit-todos done <id>` (the id bare, or quoted as JSON; backticks allowed). A line quoted from a file or tool output
+ * earlier in the reply never counts. Returned as a list (empty or one id).
+ */
 export function doneMarks(text: string): string[] {
-  const ids: string[] = []
-  for (const line of String(text ?? '').split(/\r?\n/)) {
-    const m = /^\s*`?kit-todos done (.+?)`?\s*$/.exec(line)
-    if (!m?.[1]) continue
-    const token = m[1].trim()
-    try {
-      const id = token.startsWith('"') ? JSON.parse(token) : token
-      if (typeof id === 'string' && id && !ids.includes(id)) ids.push(id)
-    } catch { /* not a quoted id: skip it */ }
+  const lines = String(text ?? '').split(/\r?\n/)
+  // A code block closes only on a fence of its own character, at least as long as the one that opened it (CommonMark),
+  // so ``` lines inside a ```` block stay inside it.
+  let fence = ''
+  let last = ''
+  let lastFenced = false
+  for (const line of lines) {
+    const f = /^\s{0,3}(`{3,}|~{3,})/.exec(line)?.[1]
+    if (f && !fence) { fence = f; continue }
+    if (f && fence && f[0] === fence[0] && f.length >= fence.length && line.trim() === f) { fence = ''; continue }
+    if (line.trim()) { last = line; lastFenced = fence !== '' }
   }
-  return ids
+  if (lastFenced || last.length > 200) return []
+  let token = last.trim()
+  if (token.startsWith('`') && token.endsWith('`') && token.length > 1) token = token.slice(1, -1).trim()
+  if (!token.startsWith(`${DONE_MARK} `)) return []
+  token = token.slice(DONE_MARK.length + 1).trim()
+  if (!token.startsWith('"')) return token && !/\s/.test(token) ? [token] : [] // a bare id is one word
+  try {
+    const id: unknown = JSON.parse(token)
+    return typeof id === 'string' && id ? [id] : []
+  } catch {
+    return [] // not a quoted id
+  }
 }
 
 // --- memories --------------------------------------------------------------------------------------------------

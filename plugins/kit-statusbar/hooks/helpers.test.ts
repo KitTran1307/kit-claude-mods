@@ -278,6 +278,15 @@ test('hook failures: one failure gives the hook, the command and the reason with
   })
 })
 
+test('hook failures: a line packed with keys is read once, fast, and the next line still counts', () => {
+  const packed = `{"input":{${Array.from({ length: 40_000 }, (_, i) => `"k${i}":{"type":"hook_non_blocking_error"}`).join(',')}}}`
+  const real = JSON.stringify({ type: 'attachment', attachment: { type: 'hook_non_blocking_error', hookName: 'Stop', command: 'x', stderr: 'boom' } })
+  const started = Date.now()
+  const out = hookErrors(`${packed}\n${real}\n`)
+  expect(Date.now() - started).toBeLessThan(500)
+  expect(out.count).toBe(1)
+})
+
 test('hook failures: many, of both kinds, are counted and the latest one is reported', () => {
   const text = failure(STOP) + failure({ ...STOP, hookName: 'PreToolUse' }) + row({ type: 'user' })
     + failure({ hookEvent: 'SessionStart', command: 'node gone.js', content: 'Cannot find module\nat line 2' }, 'hook_blocking_error')

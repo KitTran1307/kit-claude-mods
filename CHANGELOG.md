@@ -1,5 +1,30 @@
 # Changelog
 
+## kit-cloud 2.4.1, kit-statusbar 1.4.1, kit-todos 1.6.1, kit-cloud-pilot 1.3.2
+
+Security fixes from a full review. Updating is recommended.
+
+### kit-todos
+
+- **A reply can only finish the task you handed over.** The `kit-todos done <id>` line now counts only for a task
+  this session sent to Claude with **Do it now** or **Draft**, only once, and only as the last line of the reply,
+  outside a code block. Text in a repository that talks Claude into printing the line can no longer mark other tasks.
+- **Hidden text is caught more widely.** A task that carries characters the card does not show (by Unicode category,
+  plus invisible letters such as variation-selector runs that can hide bytes) is drafted for you to read instead of
+  sent in one press, and such characters are removed from Claude's suggestions. Everyday emoji (❤️ ✔️ 👨‍👩‍👧) stay as they are.
+
+### kit-statusbar, kit-todos, kit-cloud
+
+- **No terminal control codes on screen.** Text the bands draw (task text, titles, hook errors, GitHub details) has
+  control characters removed, so it cannot move the cursor or change the terminal's title.
+- kit-statusbar: a transcript line packed with hook-error markers is read in linear time.
+
+### kit-cloud-pilot 1.3.2 (installed with kit-cloud)
+
+- `gh` is always started by its full path from your home folder, never from the repository folder; branch names that
+  break the `claude/…` rule are ignored; merged-branch cleanup needs a merge into the default branch; data files are
+  private on macOS and Linux; the Windows terminal helper never starts a batch file and keeps non-English briefs intact.
+
 ## kit-cloud 2.4.0
 
 - **A calmer cloud band, sorted by what needs you.** Folded, it reads like a sentence: "✻ Cloud  Nothing needs you ·

@@ -13,8 +13,8 @@
       "source": {
         "source": "github",
         "repo": "KitTran1307/kit-cloud-pilot",
-        "ref": "v1.3.0",
-        "sha": "6092f5054527c9fcc29b099b22d0b325155476ce"
+        "ref": "v1.3.2",
+        "sha": "1be496a70bf75c2f7a01e4dd31b041150d101e2d"
       },
       "description": "Let Claude Code (CLI) run work in cloud sessions by itself: start them, track them on GitHub, wait for what they need and answer their questions with a signed reply.",
       "category": "productivity"
