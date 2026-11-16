@@ -134,8 +134,9 @@ account always has the same color.
 
 ## Privacy
 
-The plugin sends nothing anywhere. It makes no network requests. To fill the band it reads two things on your own
-machine:
+The plugin sends nothing anywhere. It makes no network requests. Full policy: [PRIVACY.md](PRIVACY.md). It also reads
+your Claude Code `settings.json` files (only to see whether you already have a status line) and saves one option,
+`surfaces`, when you answer its one question. To fill the band it reads two things on your own machine:
 
 - this session's own transcript (`<config folder>/projects/<project>/<session id>.jsonl`), only to find the session
   title, the account email and the hook failures in it;

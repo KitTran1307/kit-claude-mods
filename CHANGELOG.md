@@ -1,5 +1,12 @@
 # Changelog
 
+## usage-bar 2.0.1
+
+- **A privacy policy of its own** ([PRIVACY.md](plugins/usage-bar/PRIVACY.md)): what Usage Bar reads on your computer
+  (Claude Code's session figures, this session's transcript, the email in your login record, your settings files),
+  the one option it saves, and that it sends nothing anywhere. The README's privacy section links to it.
+- Shown as "Usage Bar" wherever Claude Code lists plugins by their display name.
+
 ## usage-bar 2.0.0, kit-cloud 2.4.2, kit-todos 1.6.2
 
 ### usage-bar (was kit-statusbar)

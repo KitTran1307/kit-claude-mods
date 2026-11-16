@@ -1,6 +1,7 @@
 {
   "name": "usage-bar",
-  "version": "2.0.0",
+  "displayName": "Usage Bar",
+  "version": "2.0.1",
   "description": "See your 5-hour and weekly limits, context and model at a glance, in the Claude desktop app too: a status bar with reset countdowns and a daily pace for the week.",
   "author": {
     "name": "KitTran1307"
