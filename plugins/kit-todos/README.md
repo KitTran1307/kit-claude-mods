@@ -38,8 +38,11 @@ and a single line when there is almost no room. It never scrolls.
 - A recent Claude Code with plugin hooks modules. The one-line installs below need 2.1.275 or later in a session
   (`/plugin install … --marketplace`) and 2.1.292 or later from a shell (`claude plugin install … --marketplace`).
 - The Claude Code CLI or the Claude desktop app, on Windows, macOS or Linux.
-- Nothing else: no Node, no Python, no account. The plugin only reads and writes your todos file and reads the
+- [Node.js](https://nodejs.org) 18 or later on your `PATH`, only for [tasks Claude suggests](#tasks-claude-suggests):
+  the suggestion tool is a small local MCP server with no dependencies. Without Node everything else works and Claude
+  simply has no suggestion tool. No Python, no account. The plugin only reads and writes your todos file and reads the
   project's memory index; it uses no network.
+- Works with [Code Mode](https://code.claude.com/docs/en/code-mode): the plugin hooks no tool calls.
 
 ## Install
 
@@ -142,6 +145,11 @@ Claude often ends a session with follow-up work it found but did not do: somethi
 needing your decision. With `allowSuggestions` on (the default), Claude gets a tool, `propose_todo`, to hand such a
 task to you instead of leaving it in the chat. The tool description tells Claude to use it only for work it is **not**
 doing now, once per task, and never for work it is about to do.
+
+The tool comes from the plugin's own MCP server (`mcp__plugin_kit-todos_kit-todos__propose_todo`), which holds each
+suggestion until the band, asking every second, takes it and answers Claude. If the band is not running (for example
+in `claude -p` without hooks modules), Claude is told after 20 seconds that nobody picked the suggestion up and to
+mention it in its message instead. The server also lists `relay_suggestions`, which only the band uses.
 
 - **Nothing is saved until you approve.** The tool does not touch your todos file. It only puts the task on a card
   above the prompt: `Claude suggests: <task>` with **Add** and **Dismiss**. The pane shows the same cards.

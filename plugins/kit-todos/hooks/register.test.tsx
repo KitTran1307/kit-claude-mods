@@ -72,8 +72,19 @@ type World = {
   statuses: (string | undefined)[]
   opened: string[]
   commands: string[]
-  /** Tools the plugin registered at session start. */
+  /** Tools the plugin registered at session start (it must register none: Code Mode refuses mods that serve tools). */
   tools: { name: string; description: string; inputSchema: any }[]
+  /** The plugin's MCP server as the band sees it: proposals Claude made that the band has not taken yet. */
+  mcpQueue: { id: string; input: Record<string, unknown> }[]
+  /** The band's answer to each proposal, by id: what Claude reads. */
+  mcpAnswers: Record<string, { result?: string; deny?: string }>
+  /** Every relay_suggestions call the band made, and every server it asked to connect. */
+  mcpCalls: { server: string; tool: string; args: any }[]
+  mcpConnects: string[]
+  /** False: the MCP server cannot be reached (node missing, the server crashed). */
+  mcpUp: boolean
+  /** Answers each clock.every period instead of the default (one that always resolves). */
+  onEvery?: (e: any) => unknown
   /** What Claude Code's `language` setting holds; 'error' = reading settings fails. */
   language: unknown
 }
@@ -105,8 +116,22 @@ function engine(on: any, over: Partial<World> = {}): World {
     failIndex: false,
     submitted: [], filled: [], written: [], reads: [], stats: [], toasts: [], statuses: [], opened: [], commands: [],
     tools: [], language: undefined,
+    mcpQueue: [], mcpAnswers: {}, mcpCalls: [], mcpConnects: [], mcpUp: true,
     ...over,
   }
+  // The plugin's MCP server (mcp/relay.mjs), reduced to what the band sees of it.
+  on('mcp.connect', (_: unknown, e: any) => {
+    w.mcpConnects.push(String(e.server))
+    return { value: w.mcpUp ? { isConnected: true, server: `plugin:kit-todos:${e.server}` } : { isConnected: false, reason: 'failed', message: 'no node' } }
+  })
+  on('mcp.call', (_: unknown, e: any) => {
+    w.mcpCalls.push({ server: e.server, tool: e.tool, args: e.args })
+    if (!w.mcpUp) return refuse('server gone')
+    for (const s of e.args?.settled ?? []) w.mcpAnswers[s.id] = s.deny !== undefined ? { deny: s.deny } : { result: s.result }
+    const proposals = w.mcpQueue.splice(0)
+    return { value: { content: [{ type: 'text', text: JSON.stringify({ proposals }) }], isError: false } }
+  })
+  on('turn.complete', (_: unknown, e: any) => ({ text: String(e.text) }))
   const refuse = (why: string) => ({ deny: why })
   on('command.register', (_: unknown, e: any) => { w.commands.push(String(e.name)); return w.failAll ? refuse('no') : { value: { command: e.name } } })
   on('tool.register', (_: unknown, e: any) => { w.tools.push({ name: e.name, description: e.description, inputSchema: e.inputSchema }); return { value: { tool: `mcp__kit-todos__${e.name}` } } })
@@ -126,7 +151,7 @@ function engine(on: any, over: Partial<World> = {}): World {
   on('session.start', (_: unknown, e: any) => ({ cwd: e.cwd }))
   on('session.cwd', () => (w.failAll ? refuse('no') : { value: w.cwd }))
   on('clock.now', () => ({ value: w.now }))
-  on('clock.every', () => (w.failAll ? refuse('no') : { value: {} }))
+  on('clock.every', (_: unknown, e: any) => (w.failAll ? refuse('no') : w.onEvery ? w.onEvery(e) : { value: {} }))
   on('fs.read', (_: unknown, e: any) => {
     const path = norm(e.path)
     w.reads.push(path)
@@ -1095,7 +1120,6 @@ test('the count leaves the status line when no task is open', async ($, on) => {
 
 test('a finished turn refreshes the list from the file', async ($, on) => {
   const w = engine(on)
-  on('turn.complete', (_: unknown, e: any) => ({ text: String(e.text) }))
   await start($, w)
   w.todos = JSON.stringify([{ id: 'n', text: 'Added by Claude', project: 'Acme' }])
   await $.turn.complete({ text: 'ok', reason: 'answer' } as never)
@@ -1283,34 +1307,72 @@ test('a write that lands but cannot be read back does not claim that nothing was
 
 // --- suggestions from Claude -----------------------------------------------------------------------------------
 
-const PROPOSE = 'mcp__kit-todos__propose_todo'
-const propose = ($: any, input: Record<string, unknown>): Promise<any> => $.tool.call({ tool: PROPOSE, ...input } as never)
+/**
+ * Claude calls propose_todo on the plugin's MCP server: the proposal waits there until the band relays it (here at the
+ * end of a turn; in a session also every second), and Claude reads the answer the band handed back.
+ */
+let proposals = 0
+const propose = async ($: any, input: Record<string, unknown>, w: World): Promise<any> => {
+  const id = `p${++proposals}`
+  w.mcpQueue.push({ id, input })
+  await $.turn.complete({ text: 'ok', reason: 'answer' } as never)
+  return w.mcpAnswers[id] ?? {}
+}
 const sugButtons = async (ui: any, prefix: 'sug-add-' | 'sug-no-'): Promise<string[]> =>
   (await ui.findAll({ type: 'Button' })).map((b: any) => String(b.key ?? '')).filter((k: string) => k.startsWith(prefix))
 const buttonLabels = async (ui: any): Promise<string[]> => (await ui.findAll({ type: 'Button' })).map((b: any) => String(b.label ?? b.text ?? ''))
 const EMPTY = JSON.stringify([])
 const OLD_USAGE = 'Usage: /todo | /todo add <task> | /todo done <number> | /todo claim'
 
-test('propose_todo is registered at session start for Claude, with a description that says nothing is saved until approval', async ($, on) => {
-  const w = engine(on)
-  await start($, w)
-  expect(w.tools).toHaveLength(1)
-  const tool = w.tools[0]!
-  expect(tool.name).toBe('propose_todo')
-  expect(tool.description).toContain('not doing now')
-  expect(tool.description).toContain('once per task')
-  expect(tool.description).toContain('Never use it for work you are about to do')
-  expect(tool.description).toContain('must approve')
-  expect(tool.inputSchema.required).toEqual(['text'])
-  expect(tool.inputSchema.properties.text.maxLength).toBe(200)
-  expect(Object.keys(tool.inputSchema.properties).sort()).toEqual(['due', 'note', 'text'])
-  expect(w.commands).toEqual(['todo'])
-})
-
-test('allowSuggestions false registers no tool, and /todo does not mention suggestions', { options: { allowSuggestions: false } }, async ($, on) => {
+test('the plugin registers no tool and hooks no tool call (Code Mode refuses such mods); the band asks its MCP server', async ($, on) => {
   const w = engine(on)
   await start($, w)
   expect(w.tools).toHaveLength(0)
+  expect(w.commands).toEqual(['todo'])
+  await $.turn.complete({ text: 'ok', reason: 'answer' } as never)
+  expect(w.mcpConnects).toEqual(['kit-todos'])
+  expect(w.mcpCalls.at(-1)).toEqual({ server: 'plugin:kit-todos:kit-todos', tool: 'relay_suggestions', args: { settled: [] } })
+})
+
+test('the band relays proposals every second on its own, without waiting for the turn to end', async ($, on) => {
+  const periods: number[] = []
+  // One period of the one-second timer resolves, then the interval is refused (ended); other timers resolve.
+  const w = engine(on, {
+    onEvery: (e: any) => {
+      if (e.ms !== 1_000) return { value: {} }
+      periods.push(e.ms)
+      return periods.length === 1 ? { value: {} } : { deny: 'stop' }
+    },
+  })
+  w.mcpQueue.push({ id: 'tick', input: { text: 'Rotate the keys' } })
+  await start($, w)
+  for (let i = 0; i < 500 && !w.mcpAnswers.tick; i++) await Promise.resolve() // let the timer's round run
+  expect(periods.length).toBeGreaterThan(0)
+  expect(w.mcpAnswers.tick).toEqual({ result: 'Proposed to the person; it is saved only if they approve.' })
+  expect(w.toasts.some(t => t.includes('Rotate the keys'))).toBe(true)
+})
+
+test('an MCP server that cannot be reached is asked again only after a minute, and nothing else breaks', async ($, on) => {
+  const w = engine(on, { mcpUp: false })
+  await start($, w)
+  await $.turn.complete({ text: 'ok', reason: 'answer' } as never)
+  await $.turn.complete({ text: 'ok', reason: 'answer' } as never)
+  expect(w.mcpConnects).toHaveLength(1)
+  expect(w.statuses.at(-1)).toBe('✻ 4 tasks, 1 overdue')
+  w.mcpUp = true
+  w.now += 61_000
+  w.mcpQueue.push({ id: 'late', input: { text: 'Check the backups' } })
+  await $.turn.complete({ text: 'ok', reason: 'answer' } as never)
+  expect(w.mcpConnects).toHaveLength(2)
+  expect(w.mcpAnswers.late).toEqual({ result: 'Proposed to the person; it is saved only if they approve.' })
+})
+
+test('allowSuggestions false asks no MCP server, and /todo does not mention suggestions', { options: { allowSuggestions: false } }, async ($, on) => {
+  const w = engine(on)
+  await start($, w)
+  await $.turn.complete({ text: 'ok', reason: 'answer' } as never)
+  expect(w.tools).toHaveLength(0)
+  expect(w.mcpCalls).toHaveLength(0)
   expect(await run($, 'frobnicate')).toBe(OLD_USAGE)
   expect(await run($, 'suggestions')).toBe(OLD_USAGE)
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -1363,7 +1425,7 @@ test('the pending list drops repeats (ignoring case) and stops at the cap', () =
 test('propose_todo keeps the proposal in the session and writes nothing', async ($, on) => {
   const w = engine(on)
   await start($, w)
-  const out = await propose($, { text: 'Move the cron jobs to the new host', due: '2026-12-01', note: 'Needs your decision on the date' })
+  const out = await propose($, { text: 'Move the cron jobs to the new host', due: '2026-12-01', note: 'Needs your decision on the date' }, w)
   expect(out.result).toBe('Proposed to the person; it is saved only if they approve.')
   expect(w.written).toHaveLength(0)
   expect(w.toasts).toHaveLength(1)
@@ -1375,9 +1437,9 @@ test('propose_todo keeps the proposal in the session and writes nothing', async 
   ].join('\n'))
   expect(w.written).toHaveLength(0)
   // The same text again is not stacked up; a bad call is refused with a reason and keeps nothing.
-  expect((await propose($, { text: 'move the cron jobs to the NEW host' })).result).toContain('Already proposed')
+  expect((await propose($, { text: 'move the cron jobs to the NEW host' }, w)).result).toContain('Already proposed')
   for (const bad of [{ text: 'x'.repeat(201) }, { text: 'a\nb' }, { text: 'Fine', due: '2026-13-40' }, {}]) {
-    const refused = await propose($, bad)
+    const refused = await propose($, bad, w)
     expect(typeof refused.deny).toBe('string')
     expect(refused.deny.length).toBeGreaterThan(10)
     expect(refused.result).toBeUndefined()
@@ -1389,8 +1451,8 @@ test('propose_todo keeps the proposal in the session and writes nothing', async 
 test('at most 10 proposals wait; the eleventh is refused and tells Claude to say it in its message instead', async ($, on) => {
   const w = engine(on)
   await start($, w)
-  for (let i = 1; i <= SUGGESTIONS_MAX; i++) expect((await propose($, { text: `Follow-up ${i}` })).result).toContain('Proposed')
-  const refused = await propose($, { text: 'Follow-up 11' })
+  for (let i = 1; i <= SUGGESTIONS_MAX; i++) expect((await propose($, { text: `Follow-up ${i}` }, w)).result).toContain('Proposed')
+  const refused = await propose($, { text: 'Follow-up 11' }, w)
   expect(refused.deny).toContain('Too many suggestions')
   expect((await run($, 'suggestions')).split('\n')).toHaveLength(SUGGESTIONS_MAX + 2)
 })
@@ -1398,8 +1460,8 @@ test('at most 10 proposals wait; the eleventh is refused and tells Claude to say
 test('the band shows suggestions first, in full, with Add and Dismiss, on terminal and desktop', async ($, on) => {
   const w = engine(on)
   await start($, w)
-  await propose($, { text: 'Review the billing job', due: '2026-11-10', note: 'It retried twice last night' })
-  await propose($, { text: 'Drop the old staging site' })
+  await propose($, { text: 'Review the billing job', due: '2026-11-10', note: 'It retried twice last night' }, w)
+  await propose($, { text: 'Drop the old staging site' }, w)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...BAND, surface })
     const texts = await textsOf(ui)
@@ -1418,8 +1480,8 @@ test('the band shows suggestions first, in full, with Add and Dismiss, on termin
 test('Add writes exactly one task with its date and note, removes the proposal and says so', async ($, on) => {
   const w = engine(on, { todos: EMPTY })
   await start($, w)
-  await propose($, { text: 'Review the billing job', due: '2026-11-10', note: 'It retried twice last night' })
-  await propose($, { text: 'Drop the old staging site' })
+  await propose($, { text: 'Review the billing job', due: '2026-11-10', note: 'It retried twice last night' }, w)
+  await propose($, { text: 'Drop the old staging site' }, w)
   const toasts = w.toasts.length
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   const [first] = await sugButtons(ui, 'sug-add-')
@@ -1446,7 +1508,7 @@ test('Add writes exactly one task with its date and note, removes the proposal a
 test('Dismiss removes the proposal and writes nothing', async ($, on) => {
   const w = engine(on)
   await start($, w)
-  await propose($, { text: 'Review the billing job' })
+  await propose($, { text: 'Review the billing job' }, w)
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   const [no] = await sugButtons(ui, 'sug-no-')
   await ui.press({ key: no! })
@@ -1461,7 +1523,7 @@ test('Dismiss removes the proposal and writes nothing', async ($, on) => {
 test('a failed Add keeps the proposal, so it can be tried again', async ($, on) => {
   const w = engine(on, { todos: '{"not": "a list"}' })
   await start($, w)
-  await propose($, { text: 'Review the billing job' })
+  await propose($, { text: 'Review the billing job' }, w)
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   const [add] = await sugButtons(ui, 'sug-add-')
   await ui.press({ key: add! })
@@ -1482,7 +1544,7 @@ test('suggestions stay in the band after Hide today, and show even when the proj
   const none = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await none.find({ type: 'Text', text: 'engine' })).toBeDefined() // nothing at all: the engine's own
   await none.unmount()
-  await propose($, { text: 'Review the billing job' })
+  await propose($, { text: 'Review the billing job' }, w)
   const only = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await only.find({ type: 'Text', text: 'Claude suggests: Review the billing job' })).toBeDefined()
   expect(await only.find({ type: 'Text', text: 'engine' })).toBeDefined() // the bands beneath still draw
@@ -1507,7 +1569,7 @@ test('suggestions stay in the band after Hide today, and show even when the proj
 test('the band keeps to its rows: a short terminal shows what fits whole, a tiny one a single line', async ($, on) => {
   const w = engine(on)
   await start($, w)
-  for (let i = 1; i <= 6; i++) await propose($, { text: `Follow-up number ${i}` })
+  for (let i = 1; i <= 6; i++) await propose($, { text: `Follow-up number ${i}` }, w)
   const tall = await $.ui.mount({ ...BAND, surface: 'terminal', props: { ...BAND.props, maxRows: 14, bodyColumns: 110 } })
   const shownCount = (await sugButtons(tall, 'sug-add-')).length
   expect(shownCount).toBeGreaterThan(0)
@@ -1536,7 +1598,7 @@ test('the pane lists every suggestion whole, with Add and Dismiss', async ($, on
   const w = engine(on, { todos: EMPTY })
   await start($, w)
   const long = `${'Long task '.repeat(18)}end` // 183 characters: the pane never cuts a suggestion
-  await propose($, { text: long, note: 'Some detail' })
+  await propose($, { text: long, note: 'Some detail' }, w)
   const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const texts = await textsOf(pane)
   expect(texts).toContain('Claude suggests (1)')
@@ -1550,7 +1612,7 @@ test('the pane lists every suggestion whole, with Add and Dismiss', async ($, on
 test('/todo accept and reject act on the numbers of the last /todo suggestions, and on all of them', async ($, on) => {
   const w = engine(on, { todos: EMPTY })
   await start($, w)
-  for (const text of ['One', 'Two', 'Three', 'Four']) await propose($, { text })
+  for (const text of ['One', 'Two', 'Three', 'Four']) await propose($, { text }, w)
   expect(await run($, 'accept 1')).toBe('Type /todo suggestions first to see the numbered list, then /todo accept <number>.')
   expect(await run($, 'reject all')).toBe('Type /todo suggestions first to see the numbered list, then /todo reject <number>.')
   await run($, 'suggestions')
@@ -1569,8 +1631,8 @@ test('/todo accept and reject act on the numbers of the last /todo suggestions, 
   expect(JSON.parse(w.written.at(-1)!.text).map((t: any) => t.text)).toEqual(['Three', 'One', 'Four'])
   expect(w.written).toHaveLength(3)
   expect(await run($, 'suggestions')).toBe('Claude has no suggestions waiting.')
-  await propose($, { text: 'Five' })
-  await propose($, { text: 'Six' })
+  await propose($, { text: 'Five' }, w)
+  await propose($, { text: 'Six' }, w)
   await run($, 'suggestions')
   expect(await run($, 'reject all')).toBe('Dismissed 2 suggestions.')
   expect(w.written).toHaveLength(3)
@@ -1579,9 +1641,9 @@ test('/todo accept and reject act on the numbers of the last /todo suggestions, 
 test('a suggestion the person did not see listed is not added by /todo accept all', async ($, on) => {
   const w = engine(on, { todos: EMPTY })
   await start($, w)
-  await propose($, { text: 'Seen' })
+  await propose($, { text: 'Seen' }, w)
   await run($, 'suggestions')
-  await propose($, { text: 'Arrived after the list' })
+  await propose($, { text: 'Arrived after the list' }, w)
   expect(await run($, 'accept all')).toBe('Added: Seen')
   expect(JSON.parse(w.written[0]!.text).map((t: any) => t.text)).toEqual(['Seen'])
   expect(await run($, 'suggestions')).toContain('1. Arrived after the list')
@@ -1685,10 +1747,10 @@ test('language vi draws the band, the pane and /todo in Vietnamese, and keeps th
 test('language vi: suggestions, buttons, toasts and replies are Vietnamese; what Claude reads stays English', { options: { language: 'vi' } }, async ($, on) => {
   const w = engine(on, { todos: EMPTY })
   await start($, w)
-  expect(w.tools[0]!.description).toContain('Propose one follow-up task') // the model's tool description is English
-  const out = await propose($, { text: 'Kiểm tra lại hóa đơn', due: '2026-11-10', note: 'Chạy lỗi hai lần' })
+  // The tool's description lives in the MCP server, in English (mcp/server.test.mjs); the answers Claude reads are too.
+  const out = await propose($, { text: 'Kiểm tra lại hóa đơn', due: '2026-11-10', note: 'Chạy lỗi hai lần' }, w)
   expect(out.result).toBe('Proposed to the person; it is saved only if they approve.')
-  expect((await propose($, { text: 'x'.repeat(201) })).deny).toContain('limit is 200')
+  expect((await propose($, { text: 'x'.repeat(201) }, w)).deny).toContain('limit is 200')
   expect(w.toasts[0]).toBe('Claude gợi ý một việc: Kiểm tra lại hóa đơn. Gõ /todo suggestions để xem và duyệt.')
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   const texts = await textsOf(ui)
@@ -1699,7 +1761,7 @@ test('language vi: suggestions, buttons, toasts and replies are Vietnamese; what
   await ui.unmount()
   expect(w.toasts.at(-1)).toBe('Đã thêm: Kiểm tra lại hóa đơn')
   expect(JSON.parse(w.written[0]!.text)[0]).toMatchObject({ text: 'Kiểm tra lại hóa đơn', due: '2026-11-10', note: 'Chạy lỗi hai lần' })
-  await propose($, { text: 'Một việc nữa' })
+  await propose($, { text: 'Một việc nữa' }, w)
   expect(await run($, 'suggestions')).toBe([
     'Claude gợi ý 1 việc (chưa lưu gì cho đến khi bạn thêm):',
     '1. Một việc nữa',

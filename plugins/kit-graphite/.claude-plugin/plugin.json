@@ -1,0 +1,13 @@
+{
+  "name": "kit-graphite",
+  "version": "1.2.1",
+  "description": "A graphite theme for the Claude desktop and mobile apps: neutral charcoal grays with a black accent (ivory in dark mode), a field of dots frozen mid-wave behind the conversation with small motes drifting through it, and a small clay-colored pixel comet circling the middle of the screen.",
+  "author": {
+    "name": "Kit Tran",
+    "url": "https://github.com/KitTran1307"
+  },
+  "homepage": "https://github.com/KitTran1307/kit-claude-mods/tree/main/plugins/kit-graphite",
+  "repository": "https://github.com/KitTran1307/kit-claude-mods",
+  "license": "MIT",
+  "keywords": ["theme", "backdrop", "graphite", "animation"]
+}

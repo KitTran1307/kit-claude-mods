@@ -1,5 +1,25 @@
 # Changelog
 
+## kit-todos 1.5.0, kit-graphite 1.2.1
+
+### kit-graphite (new)
+
+- **A graphite theme for the desktop and mobile apps.** Neutral charcoal grays with a black accent (ivory in dark
+  mode), a field of dots frozen mid-wave behind the conversation with small motes drifting through it, and a small
+  clay-colored pixel comet circling the middle of the screen. With reduce-motion on, everything stands still.
+- **Windows Terminal look.** `terminal/` holds a matching "Kit Graphite" color scheme and a still backdrop, with a
+  script that adds them to Windows Terminal after backing up its settings.
+
+### kit-todos
+
+- **Works with Code Mode.** Claude Code's Code Mode refused to start while kit-todos was installed, because the
+  plugin answered Claude's task suggestions by checking tool calls. The suggestion tool now comes from a small local
+  MCP server inside the plugin, and the band picks suggestions up from it every second, so Code Mode starts. Cards,
+  **Add**, **Dismiss** and the `/todo` commands work as before.
+- **Needs Node.js for suggestions.** That server runs on Node.js 18 or later. Without Node, everything else still
+  works and Claude has no suggestion tool. When nothing in the session picks a suggestion up, Claude is told so after
+  20 seconds instead of being told it was proposed.
+
 ## Install: pick the plugins you want
 
 Asking Claude to install from this marketplace now starts with a question: which of kit-cloud, kit-statusbar and

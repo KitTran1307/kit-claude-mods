@@ -41,10 +41,6 @@ export type Snapshot = {
 }
 
 declare module 'claude-code' {
-  /** The model tool Claude proposes a task with (registered at session start unless allowSuggestions is off). */
-  interface McpToolInputs {
-    'mcp__kit-todos__propose_todo': { text: string; due?: string; note?: string }
-  }
   interface PluginState {
     'kit-todos': {
       hiddenDay: string | null

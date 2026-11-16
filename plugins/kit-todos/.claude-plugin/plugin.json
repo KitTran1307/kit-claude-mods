@@ -1,6 +1,6 @@
 {
   "name": "kit-todos",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Your open to-do tasks for the current project in a band above the prompt, with one-press buttons to hand a task to Claude, plus a pane, a /todo command, the project's latest memories, tasks Claude suggests for you to approve, and a Vietnamese interface.",
   "author": {
     "name": "Kit Tran",
@@ -17,6 +17,13 @@
     "band"
   ],
   "types": "./types/index.d.ts",
+  "mcpServers": {
+    "kit-todos": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/server.mjs"],
+      "env": { "KIT_TODOS_SUGGEST": "${user_config.allowSuggestions}" }
+    }
+  },
   "userConfig": {
     "todosFile": {
       "type": "string",

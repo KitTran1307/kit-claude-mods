@@ -4,7 +4,7 @@ import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 import type { Memory, Shown, Snapshot, Suggestion, Todo } from '../types'
 import {
   addSuggestion, checkProposal, claimIds, needsReview, planSuggestions, repoKeyOf, unclaimed, BAND_TEXT_MAX, COLORS, PANE_TEXT_MAX, STATUSES,
-  SUGGESTION_NOTE_MAX, SUGGESTION_TEXT_MAX, configDirCandidates, countText, dueText, localDay, markDoneAt, newId,
+  configDirCandidates, countText, dueText, localDay, markDoneAt, newId,
   openTodos, parseIndex, parseTodosForWrite, planBand, planRows, projectSlug, recentlyDone, resolveTodosPath, shortText, soonDaysFrom,
   statusOf, taskPrompt, usableTodos, validDue, listRowTextCells, textCells,
 } from './data'
@@ -17,29 +17,16 @@ const ACCENT = '#d77757'
 const PANE_STEP = 50 // tasks the pane draws at first, and how many more each "Show more" adds
 const LOCK_TTL = 10_000 // a lock older than this is a stopped writer's and is taken over
 
-/** The model tool Claude proposes tasks with, and its full name as a `tool.call` hook matches it. */
-const PROPOSE_TOOL = 'propose_todo'
-const PROPOSE_FULL = 'mcp__kit-todos__propose_todo'
+/** The plugin's MCP server (mcp/server.mjs, its key in plugin.json): Claude's propose_todo lives there, and the band
+ * takes each proposal from it with relay_suggestions and answers it. No tool.call hook, so Code Mode can run. */
+const RELAY_SERVER = 'kit-todos'
+const RELAY_TOOL = 'relay_suggestions'
+const RELAY_EVERY = 1_000 // how often the band asks for new proposals (a proposal waits at most this long)
+const RELAY_RETRY = 60_000 // after the server could not be reached, wait this long before trying again
 // What the model reads and is told stays English: Claude, not the person, reads it.
 const PROPOSED = 'Proposed to the person; it is saved only if they approve.'
 const PROPOSED_AGAIN = 'Already proposed and waiting for the person; nothing more to do.'
 const PROPOSE_FULL_LIST = 'Too many suggestions are already waiting for the person. Do not propose more now; mention the remaining follow-ups in your final message instead.'
-const PROPOSE_DESCRIPTION = [
-  `Propose one follow-up task for the person's to-do list. Use it for work you found but are not doing now: it is out of scope, too large, or needs the person's decision.`,
-  'Call it once per task. Never use it for work you are about to do in this session.',
-  'Nothing is saved by this call: the person sees the task on a card and must approve it before it is written to their list.',
-  `text is one short line (${SUGGESTION_TEXT_MAX} characters at most); due (YYYY-MM-DD) and note (${SUGGESTION_NOTE_MAX} characters at most, detail for whoever does the task) are optional.`,
-].join(' ')
-const PROPOSE_SCHEMA = {
-  type: 'object',
-  properties: {
-    text: { type: 'string', maxLength: SUGGESTION_TEXT_MAX, description: 'The task, in one short line.' },
-    due: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Optional due day, YYYY-MM-DD.' },
-    note: { type: 'string', maxLength: SUGGESTION_NOTE_MAX, description: 'Optional detail for whoever does the task.' },
-  },
-  required: ['text'],
-  additionalProperties: false,
-}
 
 const hiddenDay = atom({ plugin: 'kit-todos', key: 'hiddenDay' } as const, null as string | null)
 const snapshot = atom({ plugin: 'kit-todos', key: 'snapshot' } as const, null as Snapshot | null, { shape: 'snap-2' })
@@ -53,8 +40,15 @@ type Config = {
   file: string; soonDays: number; showBand: boolean; showMemories: boolean; memoriesAllProfiles: boolean
   allowSuggestions: boolean; language: 'auto' | Lang
 }
-/** `lang` and `t` are the words in use; session.start settles them (English until then). `accepting` holds suggestions being added. */
-type Ctx = { cfg: Config; home: string; dirs: string[] | null; lang: Lang; t: Strings; accepting: Set<string> }
+/**
+ * `lang` and `t` are the words in use; session.start settles them (English until then). `accepting` holds suggestions
+ * being added. `relay` is the server name `$.mcp.call` takes once connected; `relayRetryAt` holds off a server that
+ * could not be reached; `relaying` keeps one relay round at a time.
+ */
+type Ctx = {
+  cfg: Config; home: string; dirs: string[] | null; lang: Lang; t: Strings; accepting: Set<string>
+  relay?: string; relayRetryAt?: number; relaying?: boolean
+}
 
 function readConfig(options: PluginOptions | undefined): Config {
   const o = options ?? {}
@@ -375,6 +369,62 @@ async function proposeTodo($: EngineInterface, ctx: Ctx, input: Record<string, u
   return { result: PROPOSED }
 }
 
+type Relayed = { id: string; input: Record<string, unknown> }
+type Settled = { id: string; result?: string; deny?: string }
+const NOT_RECORDED = 'The suggestion could not be recorded. Mention it in your final message instead.'
+
+/** The proposals in a relay_suggestions answer; a malformed answer is none. */
+function relayedProposals(out: { content?: { type: string; text?: string }[]; isError?: boolean }): Relayed[] {
+  if (out.isError) return []
+  try {
+    const parsed = JSON.parse(String(out.content?.find(b => b.type === 'text')?.text ?? '{}')) as { proposals?: unknown }
+    if (!Array.isArray(parsed.proposals)) return []
+    return parsed.proposals.flatMap((p: any) => (p && typeof p.id === 'string' && p.input && typeof p.input === 'object'
+      ? [{ id: p.id, input: p.input as Record<string, unknown> }]
+      : []))
+  } catch { return [] }
+}
+
+/** The plugin's MCP server under the name `$.mcp.call` takes, or null while it cannot be reached (retried later). */
+async function relayServer($: EngineInterface, ctx: Ctx): Promise<string | null> {
+  if (ctx.relay) return ctx.relay
+  const now = await $.clock.now()
+  if (ctx.relayRetryAt !== undefined && now < ctx.relayRetryAt) return null
+  const out = await $.mcp.connect(RELAY_SERVER).catch(() => null)
+  if (out?.isConnected) { ctx.relay = out.server; return ctx.relay }
+  ctx.relayRetryAt = now + RELAY_RETRY
+  return null
+}
+
+/**
+ * One relay round: takes Claude's new proposals from the MCP server, keeps or refuses each exactly as propose_todo
+ * always has (proposeTodo), and hands the answers back, which Claude then reads. Repeats while proposals keep coming.
+ */
+async function relaySuggestions($: EngineInterface, ctx: Ctx) {
+  if (ctx.relaying) return
+  ctx.relaying = true
+  try {
+    const server = await relayServer($, ctx)
+    if (!server) return
+    let settled: Settled[] = []
+    for (let round = 0; round < 20; round++) {
+      const out = await $.mcp.call(server, RELAY_TOOL, { settled }).catch(() => null)
+      if (!out) { ctx.relay = undefined; return } // the server went away: connect again on the next tick
+      const proposals = relayedProposals(out)
+      if (proposals.length === 0) return
+      settled = []
+      for (const p of proposals) {
+        const answer = await proposeTodo($, ctx, p.input).catch(() => ({ deny: NOT_RECORDED }))
+        settled.push({ id: p.id, ...answer })
+      }
+    }
+    // Still busy after 20 rounds: hand back the last answers; what arrived meanwhile waits for the next tick.
+    if (settled.length > 0) await $.mcp.call(server, RELAY_TOOL, { settled }).catch(() => null)
+  } finally {
+    ctx.relaying = false
+  }
+}
+
 // --- the module ------------------------------------------------------------------------------------------------
 
 export const register: Register = (on, options) => {
@@ -391,25 +441,20 @@ export const register: Register = (on, options) => {
         argumentHint: ctx.t.commandHint(withSuggestions),
       })
     } catch { /* no command, the band still works */ }
-    if (withSuggestions) {
-      try {
-        await $.tool.register({ name: PROPOSE_TOOL, description: PROPOSE_DESCRIPTION, inputSchema: PROPOSE_SCHEMA, isDeferred: false })
-      } catch { /* Claude cannot propose tasks; the rest works */ }
-    }
     try {
       await refresh($, ctx)
       await $.clock.every(60_000, () => { void refresh($, ctx) })
     } catch { /* no refresh timer */ }
+    // Claude's propose_todo is served by the plugin's MCP server; the band fetches and answers proposals on a timer.
+    if (withSuggestions) {
+      try { await $.clock.every(RELAY_EVERY, () => { void relaySuggestions($, ctx) }) } catch { /* Claude's proposals time out */ }
+    }
     return next(e)
   })
 
-  if (ctx.cfg.allowSuggestions) {
-    on('tool.call', { tool: PROPOSE_FULL }, async ($, e) => proposeTodo($, ctx, e as unknown as Record<string, unknown>))
-      .catch(() => ({ deny: 'The suggestion could not be recorded. Mention it in your final message instead.' }))
-  }
-
   on('turn.complete', async ($, e, next) => {
     await refresh($, ctx)
+    if (ctx.cfg.allowSuggestions) await relaySuggestions($, ctx).catch(() => undefined)
     return next(e)
   })
 

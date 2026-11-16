@@ -13,8 +13,8 @@
       "source": {
         "source": "github",
         "repo": "KitTran1307/kit-cloud-pilot",
-        "ref": "v1.2.0",
-        "sha": "97a25fbaf2f4284ce9623649c4b412fc74988128"
+        "ref": "v1.2.1",
+        "sha": "63d6e9ca3272e5ed348de83130bd8720d10f40d2"
       },
       "description": "Let Claude Code (CLI) run work in cloud sessions by itself: start them, track them on GitHub, wait for what they need and answer their questions with a signed reply.",
       "category": "productivity"
@@ -35,6 +35,12 @@
       "name": "kit-todos",
       "source": "./plugins/kit-todos",
       "description": "Your project's open to-dos above the prompt, most urgent first, with Do it now / Draft buttons and the project's newest memories.",
+      "category": "productivity"
+    },
+    {
+      "name": "kit-graphite",
+      "source": "./plugins/kit-graphite",
+      "description": "A graphite theme for the desktop and mobile apps: charcoal grays, a black accent, a dot field frozen mid-wave with drifting motes, and a pixel comet circling the middle.",
       "category": "productivity"
     }
   ]
