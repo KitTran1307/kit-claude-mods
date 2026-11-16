@@ -15,6 +15,10 @@ export type Strings = {
   showSessions: string
   openLink: string
   moreRows: (n: number) => string
+  needsYou: (n: number) => string
+  nothingNeedsYou: string
+  inReview: (n: number) => string
+  group: Record<'needs' | 'running' | 'review' | 'finished', string>
   // Summary parts
   sumAsking: (n: number) => string
   sumWorking: (n: number) => string
@@ -76,11 +80,15 @@ const colon = (label: string, row: { title: string; repo: string }) => `${label}
 export const changeText = (t: Strings, kind: ChangeKind, row: { title: string; repo: string }) => colon(t.changed[kind], row)
 
 const en: Strings = {
-  bandName: '☁ Cloud ',
-  hide: '  ▾ hide',
-  showSessions: '  ▸ show sessions',
-  openLink: 'open',
+  bandName: '✻ Cloud',
+  hide: 'Hide ‹',
+  showSessions: 'Show ›',
+  openLink: 'Open',
   moreRows: n => `… ${n} more: type /cloud`,
+  needsYou: n => `${n} need${n === 1 ? 's' : ''} you`,
+  nothingNeedsYou: 'Nothing needs you',
+  inReview: n => `${n} in review`,
+  group: { needs: 'Needs you', running: 'Running', review: 'In review', finished: 'Finished' },
   sumAsking: n => `${n} asking`,
   sumWorking: n => `${n} working`,
   sumPr: (n, failing) => `${n} with PR` + (failing ? ` (${failing} CI failed)` : ''),
@@ -141,11 +149,15 @@ const en: Strings = {
 }
 
 const vi: Strings = {
-  bandName: '☁ Cloud ',
-  hide: '  ▾ ẩn',
-  showSessions: '  ▸ xem các phiên',
-  openLink: 'mở',
+  bandName: '✻ Cloud',
+  hide: 'Ẩn ‹',
+  showSessions: 'Xem ›',
+  openLink: 'Mở',
   moreRows: n => `… còn ${n} phiên: gõ /cloud`,
+  needsYou: n => `${n} cần bạn`,
+  nothingNeedsYou: 'Không có gì cần bạn',
+  inReview: n => `${n} chờ duyệt`,
+  group: { needs: 'Cần bạn', running: 'Đang chạy', review: 'Chờ duyệt', finished: 'Đã xong' },
   sumAsking: n => `${n} đang hỏi bạn`,
   sumWorking: n => `${n} đang làm`,
   sumPr: (n, failing) => `${n} có PR` + (failing ? ` (${failing} CI lỗi)` : ''),

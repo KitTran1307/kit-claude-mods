@@ -4,7 +4,7 @@ import type { On } from 'claude-code'
 import { settingsFrom } from '../hooks/register'
 import { STRINGS, changeText, languageFromSetting, languageOption } from '../hooks/i18n'
 import {
-  HUB_STALE_MS, accountName, agoText, changes, fit, fromHub, ghSlug, githubNote, inScope, parseCommand, safeUrl, snapshot, staleNote, stateWord, summary, table, waiterNote,
+  HUB_STALE_MS, accountName, agoText, changes, fit, fromHub, ghSlug, githubNote, groupOf, grouped, headline, inScope, shortTitle, parseCommand, safeUrl, snapshot, staleNote, stateWord, summary, table, waiterNote,
 } from '../hooks/status'
 import type { HubRow } from '../hooks/status'
 
@@ -135,6 +135,56 @@ test('summary, table, stale notes and widths', async () => {
   expect(staleNote(NOW_MS - HUB_STALE_MS - 60_000, NOW_MS, false)).toBe('')
   expect(fit('line\nbreak', 20)).toBe('line break'.padEnd(20))
   expect(fit('🚀🚀🚀🚀', 3)).toBe('🚀🚀…')
+})
+
+test('groups: asking, silent and a failed CI need you; working runs; a PR waits for review; the rest is finished', () => {
+  const r = (state: string, detail = '') => fromHub(row({ id: state + detail, state, detail }))
+  expect(groupOf(r('question'))).toBe('needs')
+  expect(groupOf(r('silent'))).toBe('needs')
+  expect(groupOf(r('pr', 'PR #3 · CI failed'))).toBe('needs')
+  expect(groupOf(r('working'))).toBe('running')
+  expect(groupOf(r('pr', 'PR #4 · CI passed'))).toBe('review')
+  for (const s of ['done', 'closed', 'gone', 'untracked']) expect(groupOf(r(s))).toBe('finished')
+  const rows = [r('done'), r('pr', 'PR #4'), r('working'), r('question')]
+  expect(grouped(rows).map(g => g.key)).toEqual(['needs', 'running', 'review', 'finished'])
+  expect(headline(rows).map(p => p.text)).toEqual(['1 needs you', '1 working', '1 in review', '1 finished'])
+  expect(headline(rows)[0]?.strong).toBe(true)
+  expect(headline([r('working')]).map(p => p.text)).toEqual(['Nothing needs you', '1 working'])
+  expect(headline([r('question'), r('silent')], STRINGS.vi)[0]?.text).toBe('2 cần bạn')
+
+  expect(shortTitle('Notes: Sign-in page', 'notes')).toBe('Sign-in page')
+  expect(shortTitle('Acme: Sign-in page', 'Acme_Group')).toBe('Sign-in page')
+  expect(shortTitle('Fix: the login page', 'notes')).toBe('Fix: the login page')
+  expect(shortTitle('claude/type-pages', 'demo-site')).toBe('claude/type-pages')
+})
+
+test('the open band lists the groups most urgent first, under their names', async ($, on) => {
+  engine(on, {
+    state: () => JSON.stringify({
+      hub: { polledMs: NOW_MS - 60_000 },
+      rows: [
+        row({ id: 'p1', state: 'pr', detail: 'PR #22 · CI passed', title: 'QA agent login', url: 'https://claude.ai/code/session_P' }),
+        row({ id: 'w1', state: 'working', detail: 'pushed 8 min ago', title: 'Identity redesign', url: 'https://claude.ai/code/session_W' }),
+        row({ id: 'q1', state: 'question', detail: 'asking you', title: 'Pick a font', url: 'https://claude.ai/code/session_Q' }),
+      ],
+    }),
+  })
+  on('ui.render', ($, e) => { const { Text } = $.ui.resolve(e); return <Text>engine</Text> })
+  await $.session.start({ cwd: '/work/demo', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ plugin: 'kit-cloud', component: 'AbovePrompt', surface: 'desktop', props: BAND })
+  expect((await ui.find({ type: 'Text', text: /needs you/ }))?.text).toContain('1 needs you')
+  await ui.press({ key: 'cloud-toggle' })
+  const texts = (await ui.findAll({ type: 'Text' })).map(x => x.text)
+  const at = (s: string) => texts.findIndex(x => x.includes(s))
+  expect(at('Needs you')).toBeGreaterThan(-1)
+  expect(at('Needs you')).toBeLessThan(at('Pick a font'))
+  expect(at('Pick a font')).toBeLessThan(at('Running'))
+  expect(at('Running')).toBeLessThan(at('Identity redesign'))
+  expect(at('Identity redesign')).toBeLessThan(at('In review'))
+  expect(at('In review')).toBeLessThan(at('QA agent login'))
+  expect(texts.some(x => x.includes('Finished'))).toBe(false)
+  expect(await ui.findAll({ type: 'Link' })).toHaveLength(3)
+  await ui.unmount()
 })
 
 test('githubNote: gh\'s error said plainly, with what to do', () => {
@@ -396,11 +446,11 @@ test('language auto follows the Claude Code language setting: Vietnamese band, c
   expect(JSON.stringify(await $.command.run({ command: 'cloud', args: 'nope' } as never))).toContain('Không hiểu lệnh: /cloud nope')
   expect(JSON.stringify(await $.command.run({ command: 'cloud', args: 'untrack a1b2c3d4e5' } as never))).toContain('Đã ngừng theo dõi a1b2c3d4e5')
   const ui = await $.ui.mount({ plugin: 'kit-cloud', component: 'AbovePrompt', surface: 'terminal', props: BAND })
-  expect((await ui.find({ type: 'Text', text: /1 đang hỏi bạn/ }))?.text).toContain('1 đang hỏi bạn')
+  expect((await ui.find({ type: 'Text', text: /1 cần bạn/ }))?.text).toContain('1 cần bạn')
   expect((await ui.find({ type: 'Text', text: /1 đang làm/ }))?.text).toContain('1 đang làm')
-  expect((await ui.find({ type: 'Text', text: /xem các phiên/ }))?.text).toContain('xem các phiên')
+  expect((await ui.find({ type: 'Text', text: /Xem ›/ }))?.text).toContain('Xem ›')
   await ui.press({ key: 'cloud-toggle' })
-  expect((await ui.find({ type: 'Link' }))?.text).toContain('mở')
+  expect((await ui.find({ type: 'Link' }))?.text).toContain('Mở')
   await ui.unmount()
 })
 

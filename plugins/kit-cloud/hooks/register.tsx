@@ -8,7 +8,7 @@ import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 import type { CloudRow } from '../types'
 import { STRINGS, changeText, languageFromSetting, languageOption } from './i18n'
 import type { LanguageOption, Strings } from './i18n'
-import { MARK, accountName, changes, fit, fromHub, ghSlug, githubNote, inScope, parseCommand, snapshot, staleNote, summary, table, waiterNote } from './status'
+import { accountName, changes, fit, fromHub, ghSlug, githubNote, grouped, headline, inScope, parseCommand, shortTitle, snapshot, staleNote, table, waiterNote } from './status'
 import type { HubRow, Scope, ScopeMode, Snapshot } from './status'
 
 const rows = atom({ plugin: 'kit-cloud', key: 'rows' } as const, [] as CloudRow[], { shape: 'rows-1' })
@@ -306,37 +306,56 @@ async function ownBand($: EngineInterface, e: any, next: (x: any) => Promise<any
     const waiterText = await read($, noWaiter)
     const ghText = await read($, ghProblem)
     const toggle = () => update($, expanded, v => !v)
-    const parts = summary(list, t)
+    // Something wrong with the hub or GitHub: one note, in plain words, after the counts.
+    const note = ghText || staleText || waiterText
 
+    // ✻ Cloud  Nothing needs you · 1 working · 3 in review   Show ›   (Claude's orange for the name and what needs you)
     const head = (
       <Button key="cloud-toggle" onPress={toggle}>
-        <Text color="suggestion">{t.bandName}</Text>
-        {parts.map((p, i) => (
-          <Text key={`part-${i}`} color={p.color}>{i ? ' · ' : ' '}{p.text}</Text>
+        <Text color="claude" bold>{t.bandName}</Text>
+        {(isOpen ? [] : headline(list, t)).map((p, i) => (
+          <Text key={`part-${i}`} color={p.strong ? 'claude' : 'subtle'} bold={p.strong}>{i ? ' · ' : '  '}{p.text}</Text>
         ))}
-        {staleText ? <Text key="stale" color="warning">{` · ⚠ ${staleText}`}</Text> : null}
-        {waiterText ? <Text key="waiter" color="warning">{` · ⚠ ${waiterText}`}</Text> : null}
-        {ghText ? <Text key="gh" color="warning">{` · ⚠ ${ghText}`}</Text> : null}
-        <Text key="hint" dimColor>{isOpen ? t.hide : t.showSessions}</Text>
+        {note ? <Text key="note" color="warning">{`  ⚠ ${note}`}</Text> : null}
+        <Text key="hint" color="subtle">{`   ${isOpen ? t.hide : t.showSessions}`}</Text>
       </Button>
     )
     if (!isOpen) return <Box>{head}</Box>
 
+    // Grouped, most urgent first. Live groups list their sessions; finished ones are one quiet line (/cloud lists
+    // them). The account is shown only when the rows come from more than one; the title takes the width left.
+    const withAccount = new Set(list.map(r => r.account)).size > 1
+    const cols = Number(e.props.bodyColumns) || 100
+    const titleW = Math.max(16, Math.min(48, cols - 4 - (withAccount ? 9 : 0) - 16 - 21 - 6))
+    let left = BAND_ROWS
+    let hidden = 0
+    const blocks = grouped(list).map(g => {
+      const isNeeds = g.key === 'needs'
+      if (g.key === 'finished') {
+        return <Text key="group-finished" color="subtle">{`  ${t.group.finished} · ${g.rows.length}   /cloud`}</Text>
+      }
+      const shown = g.rows.slice(0, Math.max(0, left))
+      left -= shown.length
+      hidden += g.rows.length - shown.length
+      if (shown.length === 0) return null
+      return (
+        <Box key={`group-${g.key}`} flexDirection="column">
+          <Text color={isNeeds ? 'claude' : 'subtle'} bold={isNeeds}>{`  ${t.group[g.key]}`}</Text>
+          {shown.map(r => (
+            <Box key={r.sessionId}>
+              <Text>{'    '}{withAccount ? `${fit(r.account, 8)} ` : ''}{fit(r.repo, 15)} {fit(shortTitle(r.title, r.repo), titleW)} </Text>
+              <Text color={isNeeds ? 'claude' : 'subtle'}>{fit(r.detail, 20)} </Text>
+              {r.url ? <Link href={r.url}>{t.openLink}</Link> : null}
+            </Box>
+          ))}
+        </Box>
+      )
+    })
     return (
       <Box flexDirection="column">
         {head}
-        {list.slice(0, BAND_ROWS).map(r => {
-          const m = MARK[r.state]
-          return (
-            <Box key={r.sessionId}>
-              <Text color={m.color}>{m.mark} </Text>
-              <Text>{fit(r.account, 8)} {fit(r.repo, 14)} {fit(r.title, 26)} </Text>
-              <Text color={m.color}>{fit(r.detail, 26)} </Text>
-              {r.url ? <Link href={r.url}>{t.openLink}</Link> : <Text dimColor>-</Text>}
-            </Box>
-          )
-        })}
-        {list.length > BAND_ROWS && <Text dimColor>{t.moreRows(list.length - BAND_ROWS)}</Text>}
+        {blocks}
+        {hidden > 0 && <Text color="subtle">{`  ${t.moreRows(hidden)}`}</Text>}
       </Box>
     )
   }

@@ -113,6 +113,42 @@ export function summary(rows: CloudRow[], t: Strings = EN): Array<{ text: string
   return parts
 }
 
+/** The band's groups, most urgent first: what needs the person, what runs, what waits for review, what ended. */
+export type GroupKey = 'needs' | 'running' | 'review' | 'finished'
+export const GROUP_ORDER: GroupKey[] = ['needs', 'running', 'review', 'finished']
+
+/** Which group a row is in: asking, silent or a failed CI needs the person; a PR otherwise waits for review. */
+export function groupOf(r: CloudRow): GroupKey {
+  if (r.state === 'question' || r.state === 'silent' || (r.state === 'pr' && /CI failed/i.test(r.detail))) return 'needs'
+  if (r.state === 'working') return 'running'
+  if (r.state === 'pr') return 'review'
+  return 'finished'
+}
+
+/** A title without a leading "<repo>: " or a shorter name the repo starts with (the row shows the repo already). */
+export function shortTitle(title: string, repo: string): string {
+  const t = String(title).trim()
+  const m = /^([^:]{2,40}):\s+(.+)$/.exec(t)
+  const norm = (s: string) => s.toLowerCase().replace(/[\s_.-]/g, '')
+  return m && m[1] && m[2] && norm(repo).startsWith(norm(m[1])) ? m[2] : t
+}
+
+/** The rows by group, in GROUP_ORDER, empty groups left out; the order inside a group is the hub's. */
+export function grouped(rows: CloudRow[]): Array<{ key: GroupKey; rows: CloudRow[] }> {
+  return GROUP_ORDER.map(key => ({ key, rows: rows.filter(r => groupOf(r) === key) })).filter(g => g.rows.length > 0)
+}
+
+/** The folded band's line: what needs the person first (in the accent), else "Nothing needs you", then the counts. */
+export function headline(rows: CloudRow[], t: Strings = EN): Array<{ text: string; strong: boolean }> {
+  const count = (k: GroupKey) => rows.filter(r => groupOf(r) === k).length
+  const parts: Array<{ text: string; strong: boolean }> = []
+  parts.push(count('needs') ? { text: t.needsYou(count('needs')), strong: true } : { text: t.nothingNeedsYou, strong: false })
+  if (count('running')) parts.push({ text: t.sumWorking(count('running')), strong: false })
+  if (count('review')) parts.push({ text: t.inReview(count('review')), strong: false })
+  if (count('finished')) parts.push({ text: t.sumFinished(count('finished')), strong: false })
+  return parts
+}
+
 export const MARK: Record<CloudState, { mark: string; color: string; word: string }> = {
   working: { mark: '●', color: 'success', word: EN.word.working },
   pr: { mark: '◐', color: 'warning', word: EN.word.pr },

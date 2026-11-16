@@ -1,5 +1,13 @@
 # Changelog
 
+## kit-cloud 2.4.0
+
+- **A calmer cloud band, sorted by what needs you.** Folded, it reads like a sentence: "✻ Cloud  Nothing needs you ·
+  1 working · 3 in review", with what needs you first, in Claude's orange. Open, sessions are grouped: **Needs you**
+  (asking, silent or CI failed), **Running**, **In review**, then one quiet line for the finished ones (`/cloud`
+  lists them). Each row shows the repo, the task (without repeating the repo's name) and its state, using the
+  width the window has; the account shows only when the band mixes accounts. Colors come from your Claude Code theme.
+
 ## kit-cloud 2.3.0, kit-statusbar 1.4.0, kit-todos 1.6.0, kit-cloud-pilot 1.3.0
 
 Fewer errors and fewer steps, in more situations.
