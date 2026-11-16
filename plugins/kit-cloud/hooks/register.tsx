@@ -239,6 +239,21 @@ async function runCommand($: EngineInterface, args: string): Promise<string> {
   }
 }
 
+/**
+ * Starts the repo's watch. kit-cloud-pilot writes install.json when it loads, so on the first session after an install
+ * it may load after this plugin: then the CLI is not known yet, and one retry a few seconds later finds it.
+ */
+async function startWatch($: EngineInterface, repo: string): Promise<void> {
+  try {
+    const first = await hub($, ['watch', '--repo', repo])
+    if (!first.missing) return
+    await $.clock.sleep(5000)
+    await hub($, ['watch', '--repo', repo])
+  } catch (err) {
+    $.ui.log(`kit-cloud: watch not started: ${String(err)}`, { to: 'debug' })
+  }
+}
+
 export const register: Register = (on, options) => {
   settings = settingsFrom(options)
 
@@ -250,8 +265,9 @@ export const register: Register = (on, options) => {
       scope = await findScope($, e.cwd)
       await refresh($)
       $.clock.every(REFRESH_MS, () => { refresh($).catch(() => undefined) })
-      // Watching asks GitHub through gh; a missing node or gh only means no watch (see /cloud doctor).
-      if (settings.autoWatch && slug) await hub($, ['watch', '--repo', slug])
+      // Watching asks GitHub through gh; a missing node or gh only means no watch (see /cloud doctor). Not awaited:
+      // a slow node or disk never holds the session's start.
+      if (settings.autoWatch && slug) void startWatch($, slug)
     } catch (err) {
       await update($, lastError, () => (err as Error).message)
     }

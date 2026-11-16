@@ -12,7 +12,7 @@ Dots are drawn only in the middle, between the app's sidebars, which cover the s
 
 ## Install
 
-Needs Claude Code 2.1.323 or later: earlier versions refuse to set the theme.
+Needs Claude Code 2.1.323 or later for the theme; on an earlier version the app simply keeps its own look, with no error.
 
 At the prompt of a terminal session:
 
@@ -26,4 +26,4 @@ The theme applies when a session starts. To go back to the app's own look, disab
 
 ## In the terminal (Windows Terminal)
 
-The terminal draws no theme, so `terminal/` holds a matching look for Windows Terminal: the "Kit Graphite" color scheme and a still backdrop of the dot field with the comet. `python terminal/add-to-windows-terminal.py <path to terminal-backdrop.png>` backs up Windows Terminal's settings, then adds the scheme and a "Claude Kit" profile (PowerShell 7, backdrop at 35%); existing profiles and the default stay as they are.
+The terminal draws no theme, so `terminal/` holds a matching look for Windows Terminal: the "Kit Graphite" color scheme and a still backdrop of the dot field with the comet. `python terminal/add-to-windows-terminal.py` backs up Windows Terminal's settings, then adds the scheme and a "Claude Kit" profile (PowerShell 7 when installed, else Windows PowerShell; opens in your home folder; backdrop at 35%); existing profiles and the default stay as they are. It finds the settings of the Store, Preview, Canary and unpackaged installs by itself.

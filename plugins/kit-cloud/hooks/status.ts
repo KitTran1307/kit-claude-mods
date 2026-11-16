@@ -79,7 +79,8 @@ export function staleNote(polledMs: number | undefined, nowMs: number, hasLive: 
  */
 export function waiterNote(rows: HubRow[], sessionId: string, waiting: string[] | undefined, queued: Record<string, number> | undefined, t: Strings = EN): string {
   if (!sessionId || !Array.isArray(waiting) || waiting.includes(sessionId)) return ''
-  const owned = rows.filter(r => r.active && r.ownerSessionId === sessionId).length
+  // Branches the watch found on its own were never started from this session, so nothing here is meant to wait for them.
+  const owned = rows.filter(r => r.active && !r.discovered && r.ownerSessionId === sessionId).length
   if (!owned) return ''
   return t.noWaiter(owned, Number(queued?.[sessionId]) || 0)
 }

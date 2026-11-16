@@ -21,7 +21,9 @@ type Engine = { argv: string[][]; env: Record<string, string>[]; text: () => str
 /** Stands in for the engine: env, git, node (the hub CLI), the hub's state file, the clock. */
 const CLI = '/opt/kit-cloud-pilot/bin/cloud-pilot.mjs'
 
-function engine(on: On, over: { state?: () => string; origin?: string; nodeMissing?: boolean; hubOut?: (argv: string[]) => string; noPilot?: boolean; language?: unknown; languageFails?: boolean } = {}): Engine {
+const settle = () => new Promise(r => (globalThis as any).setTimeout(r, 30))
+
+function engine(on: On, over: { state?: () => string; origin?: string; nodeMissing?: boolean; hubOut?: (argv: string[]) => string; noPilot?: boolean; pilotLate?: boolean; language?: unknown; languageFails?: boolean } = {}): Engine {
   const seen: Engine = { argv: [], env: [], text: () => '', toasts: [], notes: [] }
   // Claude Code's own settings: only the language matters here.
   on('settings.read', () => {
@@ -42,7 +44,10 @@ function engine(on: On, over: { state?: () => string; origin?: string; nodeMissi
   on('clock.every', () => ({ value: undefined }))
   on('env.get', (_, e) => ({ value: ({ CLAUDE_CONFIG_DIR: '/home/x/.claude-work', HOME: '/home/x' } as Record<string, string>)[e.name] }))
   // cloud-pilot's data folder: its install.json (written by the kit-cloud-pilot plugin) and the hub's state.json.
-  on('fs.exists', (_, e) => ({ value: !(over.noPilot && /install\.json$/.test(String((e as { path: string }).path))) }))
+  // pilotLate: kit-cloud-pilot loads after this plugin, so install.json appears once the first sleep has passed.
+  let slept = false
+  on('clock.sleep', () => { slept = true; return { value: undefined } })
+  on('fs.exists', (_, e) => ({ value: !((over.noPilot || (over.pilotLate && !slept)) && /install\.json$/.test(String((e as { path: string }).path))) }))
   on('fs.read', (_, e) => {
     if (/install\.json$/.test(String((e as { path: string }).path))) return { value: JSON.stringify({ cli: CLI, version: '1.0.0' }) }
     return { value: over.state ? over.state() : JSON.stringify({ hub: { polledMs: NOW_MS - 60_000 }, rows: [] }) }
@@ -169,10 +174,18 @@ test('the band shows this account and repo only, and a click expands it', async 
 test('session start watches the repo through the hub, as this session', async ($, on) => {
   const seen = engine(on)
   await $.session.start({ cwd: '/work/demo', surface: 'terminal', isInteractive: true })
+  await settle()
   const call = seen.argv.find(a => a[0] === 'node')
   expect(call?.slice(-3)).toEqual(['watch', '--repo', 'octo/demo'])
   expect(call?.[1]).toBe(CLI)
   expect(seen.env[seen.argv.indexOf(call!)]?.CLAUDE_CODE_SESSION_ID).toBe('sess-1')
+})
+
+test('first session after install: kit-cloud-pilot loads later, and the watch still starts after one retry', async ($, on) => {
+  const seen = engine(on, { pilotLate: true })
+  await $.session.start({ cwd: '/work/demo', surface: 'terminal', isInteractive: true })
+  await settle()
+  expect(seen.argv.filter(a => a[0] === 'node').map(a => a.slice(-3))).toEqual([['watch', '--repo', 'octo/demo']])
 })
 
 test('autoWatch off never starts the hub; deleteMergedBranches and notifications reach it', { options: { autoWatch: false, notifications: false, deleteMergedBranches: true } }, async ($, on) => {
@@ -229,6 +242,8 @@ test('waiterNote: only for this session\'s live tracks with no waiter, and only 
   expect(waiterNote([mine], 'sess-1', [], {})).toContain('no cloud-pilot wait running for 1 tracked session')
   expect(waiterNote([mine, row({ id: 'x', ownerSessionId: 'sess-1' })], 'sess-1', [], { 'sess-1': 3 })).toContain('2 tracked sessions (3 events unread)')
   expect(waiterNote([mine], 'sess-1', ['sess-1'], {})).toBe('')
+  // A branch the watch found by itself was never started here: no note asks to wait for it.
+  expect(waiterNote([row({ id: 'w', ownerSessionId: 'sess-1', discovered: true })], 'sess-1', [], {})).toBe('')
   expect(waiterNote([mine], 'sess-1', undefined, {})).toBe('')
   expect(waiterNote([row({ ownerSessionId: 'other' })], 'sess-1', [], {})).toBe('')
   expect(waiterNote([row({ ownerSessionId: 'sess-1', active: false })], 'sess-1', [], {})).toBe('')

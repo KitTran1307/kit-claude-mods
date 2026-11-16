@@ -138,13 +138,22 @@ for (const [answer, surfaces] of [['Keep only my status line', 'desktop'], ['Sho
   })
 }
 
-test('a dismissed question keeps auto: the terminal stays with the status line, nothing is saved', async ($, on) => {
+test('a dismissed question keeps the status line and is saved, so it is not asked at every start', async ($, on) => {
   world(on, { surfaces: ['terminal'], files: { '/home/ann/.claude/settings.json': STATUS_LINE } })
   const seen = asks(on, null)
   await start($)
   await settle()
-  expect(seen.set).toEqual([])
+  expect(seen.set).toEqual([{ key: 'kit-statusbar.surfaces', value: 'desktop' }])
   expect((await band($, 'terminal')).text).toBe('engine')
+})
+
+test('a -p run is never asked and saves nothing', async ($, on) => {
+  world(on, { surfaces: ['terminal'], files: { '/home/ann/.claude/settings.json': STATUS_LINE } })
+  const seen = asks(on, 'Show both')
+  await $.session.start({ cwd: '/home/ann/work/notes', surface: 'terminal', isInteractive: false })
+  await settle()
+  expect(seen.asked).toEqual([])
+  expect(seen.set).toEqual([])
 })
 
 test('no question without a status line', async ($, on) => {
@@ -561,6 +570,28 @@ test('a measurement without rate limits keeps the last bars; one with them repla
   })
   expect((stored.info as typeof INFO).five.pct).toBe(61)
 })
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`a plan with no 5-hour window shows only the week on the ${surface}`, { options: BOTH }, async ($, on) => {
+    const stored: Record<string, unknown> = { info: INFO, now: NOW }
+    on('ui.render', ($$: any, e: any) => { const { Text } = $$.ui.resolve(e); return <Text>engine</Text> })
+    on('state.get', (_, e) => ({ value: { value: stored[e.key], version: 1 } }))
+    on('state.set', (_, e: any) => { stored[e.key] = e.value; return { value: { isSet: true as const, version: 2 } } })
+    on('clock.now', () => ({ value: NOW }))
+    on('session.measure', (_, e) => ({ changed: e.changed }))
+    await $.session.measure({
+      context: { percent: 42 } as never,
+      rateLimits: [{ kind: 'seven_day', percentUsed: 12, resetsAt: AT(NOW + 3 * 86_400_000) }] as never,
+      changed: ['rateLimits'],
+    })
+    const ui = await $.ui.mount({ ...BAND, surface })
+    const all = (await shown(ui)).join('|')
+    expect(all).not.toContain('5H')
+    expect(all).toContain('WEEK')
+    expect(all).toContain('12%')
+    await ui.unmount()
+  })
+}
 
 // ---------- the account ----------
 test('default account: label default, orange, the login record\'s email', async ($, on) => {

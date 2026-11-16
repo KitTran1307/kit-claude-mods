@@ -5,16 +5,17 @@
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757.svg)](https://docs.claude.com/en/docs/claude-code/plugins)
 [![Windows · macOS · Linux](https://img.shields.io/badge/os-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-555.svg)](#)
 
-Three small mods for [Claude Code](https://claude.com/claude-code) that add what the interface leaves out. They work
+Four small mods for [Claude Code](https://claude.com/claude-code) that add what the interface leaves out. They work
 in the CLI and in the Claude desktop app, on Windows, macOS and Linux, in English or Vietnamese.
 
 | Plugin | What you get | Needs |
 | --- | --- | --- |
 | [**kit-cloud**](plugins/kit-cloud) | A band above the prompt with your **cloud sessions**: working, asking you something, PR open, CI failed, silent, each with its link, and a notification when one needs you. `/cloud` for the table. | Node 18+, GitHub CLI `gh` signed in |
 | [**kit-statusbar**](plugins/kit-statusbar) | A **status bar** for the desktop app (which has none) and the CLI: repo, model, effort, context use, account, session title, 5-hour and weekly limits with reset countdowns, and a warning when a hook keeps failing. | nothing |
-| [**kit-todos**](plugins/kit-todos) | Your project's **open to-dos** above the prompt, most urgent first, with *Do it now* and *Draft* buttons, plus the project's newest memories. `/todo` to add and finish tasks; Claude can suggest tasks for you to approve. | nothing |
+| [**kit-todos**](plugins/kit-todos) | Your project's **open to-dos** above the prompt, most urgent first, with *Do it now* and *Draft* buttons, plus the project's newest memories. `/todo` to add and finish tasks; Claude can suggest tasks for you to approve. | nothing (Node 18+ for Claude's suggestions) |
+| [**kit-graphite**](plugins/kit-graphite) | A **graphite theme** for the desktop and mobile apps: charcoal grays, a dot field frozen mid-wave and a small pixel comet; a matching Windows Terminal look. | Claude Code 2.1.323+ |
 
-All three together in the Claude Code CLI (real screenshot, demo data):
+The three bands together in the Claude Code CLI (real screenshot, demo data):
 
 ![kit-cloud, kit-statusbar and kit-todos above the prompt in the Claude Code CLI](docs/images/terminal-bands.png)
 
@@ -30,7 +31,7 @@ Paste this into a Claude Code session:
 > Install plugins from the KitTran1307/kit-claude-mods marketplace,
 > following https://github.com/KitTran1307/kit-claude-mods/blob/main/INSTALL.md
 
-Claude asks which of the three you want (pick one, two or all), checks what your machine has, then installs and
+Claude asks which of the four you want (pick any, or all), checks what your machine has, then installs and
 verifies only those, following [INSTALL.md](INSTALL.md). To skip the question, name them: "Install kit-todos from …".
 
 ### By hand
@@ -42,6 +43,7 @@ the scope, user is the usual one):
 /plugin install kit-cloud --marketplace KitTran1307/kit-claude-mods
 /plugin install kit-statusbar --marketplace KitTran1307/kit-claude-mods
 /plugin install kit-todos --marketplace KitTran1307/kit-claude-mods
+/plugin install kit-graphite --marketplace KitTran1307/kit-claude-mods
 ```
 
 From a shell instead, Claude Code 2.1.292 or later (`claude --version`; `claude update` updates it):

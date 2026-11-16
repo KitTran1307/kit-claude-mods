@@ -5,7 +5,7 @@
     "url": "https://github.com/KitTran1307"
   },
   "metadata": {
-    "description": "Small Claude Code mods: a cloud-session band, a status bar for the desktop app, and a to-do band with your project's memories."
+    "description": "Small Claude Code mods: a cloud-session band, a status bar for the desktop app, a to-do band with your project's memories, and a graphite theme."
   },
   "plugins": [
     {

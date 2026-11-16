@@ -1,5 +1,40 @@
 # Changelog
 
+## kit-cloud 2.2.1, kit-statusbar 1.3.1, kit-todos 1.5.1, kit-graphite 1.2.3
+
+Fewer errors and fewer steps for you, in more situations.
+
+### kit-cloud
+
+- **No false "no cloud-pilot wait running" warning.** Cloud sessions the watch finds on its own no longer ask you to
+  start a waiter you never needed.
+- **Starts faster, and works on the first session after install.** Watching your repo no longer holds up the
+  session's start, and when kit-cloud-pilot loads a moment later, the watch starts anyway.
+
+### kit-statusbar
+
+- **Asked once, really.** Closing the "show the bar beside your status line?" question now keeps your status line
+  and is remembered, so it is not asked again at every start; a `claude -p` run is never asked.
+
+### kit-graphite
+
+- **No error on an older Claude Code.** Before 2.1.323 the theme is refused; the app now simply keeps its own look
+  and no failed hook is reported.
+- **Quiet in the terminal.** A terminal-only session no longer shows a "theme not drawn" status line.
+- **Windows Terminal script works out of the box.** It finds Windows Terminal's settings for the Store, Preview,
+  Canary and unpackaged installs, reads settings files with comments, uses PowerShell 7 when installed or else
+  Windows PowerShell, opens in your home folder, uses the bundled backdrop by default, and explains a problem in
+  plain words instead of a traceback.
+- **English description** of the backdrop for screen readers.
+
+### kit-todos
+
+- **Says that suggestions need Node.js 18+**, in the option, the README and the install guide.
+
+### Docs
+
+- The README and install guide list all four plugins, kit-graphite included.
+
 ## kit-graphite 1.2.2
 
 - **Needs Claude Code 2.1.323 or later.** Earlier versions refuse to set the theme, so the README now says so. The

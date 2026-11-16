@@ -94,15 +94,18 @@ async function ensureStatusLine($: EngineInterface, cfg: Config, cwd?: string): 
 
 /**
  * auto mode found a status line in an attached terminal: ask once whether the band should join it there. The answer
- * is written to the `surfaces` option, so it is never asked again; a dismissed dialog (or a -p run) keeps auto, which
- * leaves the terminal to the status line. Not awaited by the caller: the session starts without waiting for it.
+ * is written to the `surfaces` option, so it is never asked again. A dismissed dialog counts as "keep my status line"
+ * and is saved the same way, so a person who closes it is not asked at every start; a -p run (no one to ask) is not
+ * asked. Not awaited by the caller: the session starts without waiting for it.
  */
-async function confirmBesideStatusLine($: EngineInterface, cfg: Config): Promise<void> {
+async function confirmBesideStatusLine($: EngineInterface, cfg: Config, isInteractive: boolean): Promise<void> {
   try {
-    if (cfg.surfaces !== 'auto' || (await read($, statusLine)) !== true) return
+    if (!isInteractive || cfg.surfaces !== 'auto' || (await read($, statusLine)) !== true) return
     if (!(await $.session.surfaces()).includes('terminal')) return
     const t = TABLES[await languageOf($, cfg)]
+    // Rejects when dismissed: the person keeps the line they had, as the first answer says.
     const answer = await $.ui.ask(t.statusLineQuestion, { options: STATUS_LINE_ANSWERS.map(a => t[a.key]), header: t.askHeader })
+      .catch(() => t[STATUS_LINE_ANSWERS[0].key])
     const surfaces = surfacesForAnswer(answer)
     if (!surfaces) return
     const set = await $.config.set({ key: 'kit-statusbar.surfaces', value: surfaces })
@@ -178,7 +181,7 @@ export const register: Register = (on, options) => {
       if (cfg.surfaces === 'auto') {
         await update($, statusLine, () => null)
         await ensureStatusLine($, cfg, started.cwd)
-        void confirmBesideStatusLine($, cfg)
+        void confirmBesideStatusLine($, cfg, e.isInteractive !== false)
       }
       const startMs = await $.clock.now()
       await update($, now, () => startMs)

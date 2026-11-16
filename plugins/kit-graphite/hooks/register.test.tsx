@@ -5,9 +5,10 @@ import type { On } from 'claude-code'
 type World = { looks: any[]; statuses: string[]; toasts: string[] }
 
 // Stands in for the engine: records what the plugin asks of it, and answers theme.set with `answer`.
-function engine(on: On, answer: object): World {
+function engine(on: On, answer: object | 'refuse'): World {
   const w: World = { looks: [], statuses: [], toasts: [] }
-  on('theme.set', (_: unknown, e: any) => { w.looks.push(e); return { value: answer } })
+  on('theme.set', (_: unknown, e: any) => { w.looks.push(e); if (answer === 'refuse') throw new Error('theme.set: refused (host check)'); return { value: answer } })
+  on('ui.log', () => ({ value: undefined }))
   on('ui.status', (_: unknown, e: any) => { w.statuses.push(String(e.text)); return { value: undefined } })
   on('ui.toast', (_: unknown, e: any) => { w.toasts.push(String(e.text)); return { value: undefined } })
   on('session.start', (_: unknown, e: any) => ({ cwd: e.cwd }))
@@ -38,10 +39,18 @@ test('no status line while the desktop client is still attaching', async ($, on)
   expect(w.statuses).toHaveLength(0)
 })
 
-test('a real miss (nothing will draw the theme) shows its reason', async ($, on) => {
+test('a terminal-only session (nothing will draw the theme) says nothing to the person', async ($, on) => {
   const w = engine(on, { isDrawn: false, reason: 'no client draws themes' })
   await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true } as never)
-  expect(w.statuses).toEqual(['no client draws themes'])
+  expect(w.statuses).toHaveLength(0)
+  expect(w.toasts).toHaveLength(0)
+})
+
+test('a Claude Code that refuses the theme leaves the session start alone and says nothing', async ($, on) => {
+  const w = engine(on, 'refuse')
+  await $.session.start({ cwd: '/w', surface: 'desktop', isInteractive: true } as never)
+  expect(w.statuses).toHaveLength(0)
+  expect(w.toasts).toHaveLength(0)
 })
 
 for (const surface of ['desktop', 'mobile'] as const) {
@@ -50,7 +59,7 @@ for (const surface of ['desktop', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...BACKDROP('kit-graphite-waves'), surface } as never)
     const svgs = await ui.findAll({ type: 'Svg' })
     expect(svgs).toHaveLength(1)
-    expect(String(svgs[0]!.props.alt)).toContain('nhân vật')
+    expect(String(svgs[0]!.props.alt)).toContain('comet')
     await ui.unmount()
   })
 }

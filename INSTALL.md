@@ -2,7 +2,7 @@
 
 These steps are written for Claude Code to follow when a person asks it to install one or more of these plugins.
 A person can follow them too. Install only the plugins the person asked for; if they said "all", that is
-`kit-cloud`, `kit-statusbar` and `kit-todos`.
+`kit-cloud`, `kit-statusbar`, `kit-todos` and `kit-graphite`.
 
 ## 0. Let the person choose
 
@@ -12,7 +12,9 @@ pick several (in Claude Code, a multiple-choice question with several answers al
 - **kit-cloud**: your cloud sessions above the prompt, with a notification when one needs you. Needs Node 18+ and a
   signed-in GitHub CLI (`gh`); installs kit-cloud-pilot with it.
 - **kit-statusbar**: a status bar (repo, model, context, usage limits), also in the desktop app. Needs nothing.
-- **kit-todos**: your project's to-dos above the prompt, and tasks Claude suggests for you to approve. Needs nothing.
+- **kit-todos**: your project's to-dos above the prompt, and tasks Claude suggests for you to approve. Needs nothing; Claude's suggestions need Node 18+.
+- **kit-graphite**: a graphite theme for the desktop and mobile apps (the terminal keeps its look). Needs Claude
+  Code 2.1.323 or later.
 
 Install only what they pick. If they pick none, install nothing and stop.
 
@@ -22,7 +24,7 @@ Run these and note the results (Windows: Git Bash or PowerShell both work):
 
 ```
 claude --version
-node --version     # only kit-cloud needs Node (18 or newer)
+node --version     # kit-cloud needs Node 18+; kit-todos uses it for Claude's suggestions
 gh --version       # only kit-cloud needs the GitHub CLI
 gh auth status     # kit-cloud: must show a signed-in account
 ```
