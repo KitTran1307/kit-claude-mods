@@ -1,5 +1,10 @@
 # Changelog
 
+## kit-cloud-pilot 1.2.2
+
+kit-cloud installs kit-cloud-pilot 1.2.2: with Claude Code's Code Mode on, starting a cloud session no longer waits
+on Code Mode's one-time question until it times out; it says right away how to answer it once.
+
 ## kit-cloud 2.2.1, kit-statusbar 1.3.1, kit-todos 1.5.1, kit-graphite 1.2.3
 
 Fewer errors and fewer steps for you, in more situations.
