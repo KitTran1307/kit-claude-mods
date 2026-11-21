@@ -4,7 +4,7 @@ import type { On } from 'claude-code'
 import { settingsFrom } from '../hooks/register'
 import { STRINGS, changeText, languageFromSetting, languageOption } from '../hooks/i18n'
 import {
-  HUB_STALE_MS, accountName, agoText, changes, fit, fromHub, ghSlug, githubNote, groupOf, grouped, headline, inScope, queueFileName, queueHasEvents, shortTitle, parseCommand, safeUrl, snapshot, staleNote, stateWord, summary, table, waiterNote, wakeBatch,
+  HUB_STALE_MS, accountName, agoText, asideNote, changes, fit, fromHub, ghSlug, githubNote, groupOf, grouped, headline, inScope, queueFileName, queueHasEvents, shortTitle, parseCommand, safeUrl, snapshot, staleNote, stateWord, summary, table, waiterNote, wakeBatch,
 } from '../hooks/status'
 import type { HubRow } from '../hooks/status'
 
@@ -503,6 +503,24 @@ test('wakeSession: a session with nobody at the prompt (claude -p) is never woke
   await seen.tick()
   expect(takes(seen)).toHaveLength(0)
   expect(seen.prompts).toEqual([])
+})
+
+test('an account set aside by cloud-pilot (its sessions cannot push) shows on the band and in /cloud, for this account only', async ($, on) => {
+  let accounts: Record<string, unknown> = { work: { sinceMs: NOW_MS - 600_000, reason: 'no-push' } }
+  engine(on, { state: () => JSON.stringify({ hub: { polledMs: NOW_MS - 60_000 }, rows: [row()], accounts }) })
+  await $.session.start({ cwd: '/work/demo', surface: 'terminal', isInteractive: true })
+  let ui = await $.ui.mount({ plugin: 'kit-cloud', component: 'AbovePrompt', surface: 'terminal', props: BAND })
+  expect((await ui.find({ type: 'Text', text: /cannot push to GitHub/ }))?.text).toContain('cloud-pilot account --ok work')
+  await ui.unmount()
+  expect(JSON.stringify(await $.command.run({ command: 'cloud' } as never))).toContain('claude.ai/connect-github')
+  accounts = { home: { sinceMs: 1 } }
+  await $.command.run({ command: 'cloud' } as never)
+  ui = await $.ui.mount({ plugin: 'kit-cloud', component: 'AbovePrompt', surface: 'terminal', props: BAND })
+  expect(await ui.find({ type: 'Text', text: /cannot push to GitHub/ })).toBeUndefined()
+  await ui.unmount()
+  expect(asideNote(undefined, 'work')).toBe('')
+  expect(asideNote({ work: 'x' }, 'work')).toBe('')
+  expect(asideNote({ work: {} }, 'work', STRINGS.vi)).toContain('không đẩy được lên GitHub')
 })
 
 test('wakeSession off: no take, no prompt', { options: { wakeSession: false } }, async ($, on) => {

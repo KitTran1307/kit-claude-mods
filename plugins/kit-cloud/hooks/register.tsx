@@ -8,7 +8,7 @@ import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 import type { CloudRow } from '../types'
 import { STRINGS, changeText, languageFromSetting, languageOption } from './i18n'
 import type { LanguageOption, Strings } from './i18n'
-import { accountName, changes, fit, fromHub, ghSlug, githubNote, grouped, headline, inScope, parseCommand, queueFileName, queueHasEvents, shortTitle, snapshot, staleNote, table, waiterNote, wakeBatch } from './status'
+import { accountName, asideNote, changes, fit, fromHub, ghSlug, githubNote, grouped, headline, inScope, parseCommand, queueFileName, queueHasEvents, shortTitle, snapshot, staleNote, table, waiterNote, wakeBatch } from './status'
 import type { HubRow, Scope, ScopeMode, Snapshot } from './status'
 
 const rows = atom({ plugin: 'kit-cloud', key: 'rows' } as const, [] as CloudRow[], { shape: 'rows-1' })
@@ -137,12 +137,12 @@ async function hub($: EngineInterface, args: string[]): Promise<Record<string, u
   }
 }
 
-type HubFile = { rows: HubRow[]; polledMs?: number; waiting?: string[]; queued?: Record<string, number>; errors?: Record<string, unknown> }
+type HubFile = { rows: HubRow[]; polledMs?: number; waiting?: string[]; queued?: Record<string, number>; errors?: Record<string, unknown>; accounts?: Record<string, unknown> }
 
 async function readHub($: EngineInterface): Promise<HubFile> {
   if (!statePath) statePath = `${await hubDir($)}/state.json`
   if (!(await $.fs.exists(statePath))) return { rows: [] }
-  const parsed = JSON.parse(String(await $.fs.read(statePath))) as { rows?: unknown; hub?: { polledMs?: number }; waiting?: unknown; queued?: unknown; errors?: unknown }
+  const parsed = JSON.parse(String(await $.fs.read(statePath))) as { rows?: unknown; hub?: { polledMs?: number }; waiting?: unknown; queued?: unknown; errors?: unknown; accounts?: unknown }
   const list = Array.isArray(parsed?.rows) ? (parsed.rows as HubRow[]) : []
   return {
     rows: list.filter(r => r && typeof r === 'object' && r.kind === 'branch' && typeof r.id === 'string'),
@@ -150,6 +150,7 @@ async function readHub($: EngineInterface): Promise<HubFile> {
     waiting: Array.isArray(parsed?.waiting) ? parsed.waiting.filter((x): x is string => typeof x === 'string') : undefined,
     queued: parsed?.queued && typeof parsed.queued === 'object' ? (parsed.queued as Record<string, number>) : undefined,
     errors: parsed?.errors && typeof parsed.errors === 'object' ? (parsed.errors as Record<string, unknown>) : undefined,
+    accounts: parsed?.accounts && typeof parsed.accounts === 'object' ? (parsed.accounts as Record<string, unknown>) : undefined,
   }
 }
 
@@ -176,7 +177,8 @@ async function refresh($: EngineInterface, timer = false): Promise<void> {
     await update($, noWaiter, () => (settings.wakeSession && takeWorks ? '' : note))
     // The first of this band's repos whose last poll failed, said plainly (sign in, install gh, offline...).
     const failing = [...new Set(mine.filter(r => r.active).map(r => r.repo))].map(repo => file.errors?.[repo]).find(Boolean)
-    await update($, ghProblem, () => githubNote(failing, t))
+    // A GitHub poll failing here first; else this account set aside by cloud-pilot (its sessions cannot push).
+    await update($, ghProblem, () => githubNote(failing, t) || asideNote(file.accounts, scope?.account, t))
     if (settings.notifyInSession) announce($, happened)
     await update($, lastError, () => '')
     await update($, updatedAt, () => nowMs)

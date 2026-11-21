@@ -21,7 +21,9 @@ installs kit-cloud-pilot with it.
 **Told when it matters:** while your session is open, kit-cloud shows a message and sends a notification the moment a
 cloud session asks you a question, opens a PR, fails CI, goes silent or finishes (`notifyInSession`). **Claude is told
 too:** the news of the cloud sessions your session started reaches Claude in that session by itself, as a message from
-kit-cloud, so it can check the PR or answer the question without anything left running to wait (`wakeSession`). **Vietnamese**
+kit-cloud, so it can check the PR or answer the question without anything left running to wait (`wakeSession`).
+If a cloud session cannot push at all (most often a lapsed GitHub connection on claude.ai), the band says which
+account to reconnect, and no further cloud session starts on it until then. **Vietnamese**
 (tiếng Việt) is built in: the band, `/cloud` and the messages follow Claude Code's `language` setting, or set `language`.
 
 ## Requirements

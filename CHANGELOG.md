@@ -1,5 +1,12 @@
 # Changelog
 
+## kit-cloud 2.6.0
+
+- **The band says when an account cannot use the cloud.** When cloud-pilot sets your account aside (a session it
+  started pushed nothing, most often because the account's GitHub connection on claude.ai lapsed), the band says so
+  and how to reconnect. Uses kit-cloud-pilot 1.5.1, which then refuses to start more cloud sessions on that account
+  and gives Claude what it needs to continue the work on your machine.
+
 ## kit-cloud 2.5.0
 
 - **Claude hears from its cloud sessions by itself.** When a cloud session your session started asks a question, opens
