@@ -1,5 +1,16 @@
 # Changelog
 
+## kit-cloud 2.5.0
+
+- **Claude hears from its cloud sessions by itself.** When a cloud session your session started asks a question, opens
+  a PR, merges, fails CI, goes silent or pushes nothing, kit-cloud now hands that news to Claude in your session as a
+  message, once Claude is idle (`wakeSession`, on by default). Before, Claude heard only while a `cloud-pilot wait` ran,
+  and that wait ends after each batch: a merge that came after a "silent" notice could go unread. Branches found by
+  watching the repo are not sent, since they were not started from your session.
+- The band no longer asks you to restart a wait while `wakeSession` is on.
+- Uses kit-cloud-pilot 1.4.0 (the marketplace installs it), which also reports a started session that pushed nothing
+  in its first 20 minutes, a common sign that its account lost its GitHub connection.
+
 ## usage-bar 2.0.1
 
 - **A privacy policy of its own** ([PRIVACY.md](plugins/usage-bar/PRIVACY.md)): what Usage Bar reads on your computer

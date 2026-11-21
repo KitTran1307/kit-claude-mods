@@ -1,6 +1,6 @@
 {
   "name": "kit-cloud",
-  "version": "2.4.2",
+  "version": "2.5.0",
   "description": "See your Claude Code cloud sessions above the prompt: working, asking, PR open, CI failed or silent, with a link to each. The band for kit-cloud-pilot, which tracks them.",
   "author": {
     "name": "Kit Tran",
@@ -51,6 +51,12 @@
       "type": "boolean",
       "title": "Notify in this session",
       "description": "While this Claude session is open, show a message and a notification when a cloud session starts asking you a question, opens a PR, fails CI, goes silent or finishes.",
+      "default": true
+    },
+    "wakeSession": {
+      "type": "boolean",
+      "title": "Tell Claude here",
+      "description": "Hand Claude in this session the news of the cloud sessions it started (a question, a PR, a merge, a CI failure, silence, nothing pushed) as soon as cloud-pilot has it, without a cloud-pilot wait running. Off: Claude hears only while it runs cloud-pilot wait.",
       "default": true
     },
     "deleteMergedBranches": {

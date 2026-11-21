@@ -32,6 +32,7 @@ export type Strings = {
   pilotNotPolled: string
   pilotStopped: (minutes: number) => string
   noWaiter: (owned: number, unread: number) => string
+  wakeFailed: (kinds: string) => string
   ghSignedOut: string
   ghMissing: string
   ghOffline: string
@@ -98,6 +99,7 @@ const en: Strings = {
   word: { working: 'working', pr: 'PR open', question: 'asking', silent: 'silent', done: 'merged', closed: 'closed', ended: 'ended', untracked: 'untracked' },
   pilotNotPolled: 'cloud-pilot has not polled yet',
   pilotStopped: m => `cloud-pilot stopped ${m}m ago (status may be old)`,
+  wakeFailed: kinds => `cloud news (${kinds}) has not reached Claude here yet: kit-cloud tries again every 30 s`,
   noWaiter: (owned, unread) => `no cloud-pilot wait running for ${owned} tracked session${owned > 1 ? 's' : ''}` + (unread ? ` (${unread} event${unread > 1 ? 's' : ''} unread)` : '') + ': ask Claude to start it again',
   ghSignedOut: 'GitHub CLI is signed out: run gh auth login',
   ghMissing: 'GitHub CLI (gh) is not installed: get it at cli.github.com',
@@ -167,6 +169,7 @@ const vi: Strings = {
   word: { working: 'đang làm', pr: 'có PR', question: 'đang hỏi bạn', silent: 'im lặng', done: 'đã gộp', closed: 'đã đóng', ended: 'đã dừng', untracked: 'chưa theo dõi' },
   pilotNotPolled: 'cloud-pilot chưa kiểm tra lần nào',
   pilotStopped: m => `cloud-pilot đã dừng ${m} phút trước (trạng thái có thể cũ)`,
+  wakeFailed: kinds => `tin từ cloud (${kinds}) chưa tới được Claude ở đây: kit-cloud thử lại mỗi 30 giây`,
   noWaiter: (owned, unread) => `không có cloud-pilot wait nào đang chạy cho ${owned} phiên đang theo dõi` + (unread ? ` (${unread} tin chưa đọc)` : '') + ': nhờ Claude chạy lại',
   ghSignedOut: 'GitHub CLI chưa đăng nhập: chạy gh auth login',
   ghMissing: 'chưa cài GitHub CLI (gh): tải ở cli.github.com',

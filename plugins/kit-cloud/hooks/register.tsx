@@ -8,7 +8,7 @@ import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 import type { CloudRow } from '../types'
 import { STRINGS, changeText, languageFromSetting, languageOption } from './i18n'
 import type { LanguageOption, Strings } from './i18n'
-import { accountName, changes, fit, fromHub, ghSlug, githubNote, grouped, headline, inScope, parseCommand, shortTitle, snapshot, staleNote, table, waiterNote } from './status'
+import { accountName, changes, fit, fromHub, ghSlug, githubNote, grouped, headline, inScope, parseCommand, queueFileName, queueHasEvents, shortTitle, snapshot, staleNote, table, waiterNote, wakeBatch } from './status'
 import type { HubRow, Scope, ScopeMode, Snapshot } from './status'
 
 const rows = atom({ plugin: 'kit-cloud', key: 'rows' } as const, [] as CloudRow[], { shape: 'rows-1' })
@@ -28,6 +28,7 @@ type Settings = {
   showBand: boolean
   notifications: boolean
   notifyInSession: boolean
+  wakeSession: boolean
   deleteMergedBranches: boolean
   language: LanguageOption
 }
@@ -42,6 +43,7 @@ export function settingsFrom(options: PluginOptions | undefined): Settings {
     showBand: flag(o.showBand, true),
     notifications: flag(o.notifications, true),
     notifyInSession: flag(o.notifyInSession, true),
+    wakeSession: flag(o.wakeSession, true),
     deleteMergedBranches: flag(o.deleteMergedBranches, false),
     language: languageOption(o.language),
   }
@@ -151,7 +153,11 @@ async function readHub($: EngineInterface): Promise<HubFile> {
   }
 }
 
-async function refresh($: EngineInterface): Promise<void> {
+/**
+ * Reads the hub's state into the band. `timer`: the 30 s tick, the only caller that may hand events to Claude (a
+ * prompt submitted from a command or the session's start would wait on the very turn that hook holds).
+ */
+async function refresh($: EngineInterface, timer = false): Promise<void> {
   try {
     const file = await readHub($)
     const mine = scope ? file.rows.filter(r => inScope(r, scope!, settings.scope)) : file.rows
@@ -163,7 +169,11 @@ async function refresh($: EngineInterface): Promise<void> {
     await update($, rows, () => list)
     await update($, stale, () => staleNote(file.polledMs, nowMs, mine.some(r => r.active), t))
     const sid = await $.session.id()
-    await update($, noWaiter, () => waiterNote(file.rows, sid, file.waiting, file.queued, t))
+    const note = waiterNote(file.rows, sid, file.waiting, file.queued, t)
+    // With wakeSession this plugin is the waiter once cloud-pilot's take has answered: no wait needs to run. The note
+    // asks for one when take is missing (an old cloud-pilot) or never answered.
+    if (timer && settings.wakeSession && interactive) await wake($, sid, Boolean(note) && takeWorks === null)
+    await update($, noWaiter, () => (settings.wakeSession && takeWorks ? '' : note))
     // The first of this band's repos whose last poll failed, said plainly (sign in, install gh, offline...).
     const failing = [...new Set(mine.filter(r => r.active).map(r => r.repo))].map(repo => file.errors?.[repo]).find(Boolean)
     await update($, ghProblem, () => githubNote(failing, t))
@@ -173,6 +183,59 @@ async function refresh($: EngineInterface): Promise<void> {
   } catch (e) {
     // A half-written or unreadable file keeps the last good rows; /cloud shows the reason.
     await update($, lastError, () => (e as Error).message)
+  }
+}
+
+let waking = false
+/** Whether cloud-pilot's `take` answers here: null until asked, false for an old cloud-pilot without it. */
+let takeWorks: boolean | null = null
+/** The queue file as it stood when take last found nothing of this session's (only watch-found events): skip it. */
+let idleQueue = ''
+/** Events taken but not yet handed to Claude (a refused prompt, or more than one message holds). */
+let pending: unknown[] = []
+let toldPending = false
+/** False for a session with no person at the prompt (claude -p, an SDK host): it is never woken. */
+let interactive = true
+
+/**
+ * Hands Claude in this session the events cloud-pilot queued for it (sessions it started: a question, a PR, a merge,
+ * a CI failure, silence, nothing pushed) as a prompt from this plugin, run once the session is idle. Without it Claude
+ * hears of them only while a `cloud-pilot wait` runs, and that wait ends after each batch. The queue file is read
+ * first, so an empty queue costs one small file read per refresh and no process. Events taken but not delivered are
+ * kept and sent again on the next refresh.
+ */
+async function wake($: EngineInterface, sid: string, probe: boolean): Promise<void> {
+  if (waking || !sid || takeWorks === false) return
+  waking = true
+  try {
+    if (!pending.length) {
+      const file = `${await hubDir($)}/queue/${queueFileName(sid)}`
+      const text = (await $.fs.exists(file)) ? String(await $.fs.read(file)) : ''
+      if (!probe && (!queueHasEvents(text) || text === idleQueue)) return
+      const r = await hub($, ['take'])
+      if (r.missing) return
+      takeWorks = r.status === 'events' || r.status === 'settling' || r.status === 'empty'
+      if (r.status === 'empty') idleQueue = text
+      if (r.status !== 'events' || !Array.isArray(r.events)) return
+      pending = r.events
+      toldPending = false
+    }
+    const { text, rest } = wakeBatch(pending)
+    const sent = await Promise.resolve($.prompt.submit({ text })).catch((err: unknown) => ({ drop: String(err) })) as { drop?: string } | undefined
+    if (sent && typeof sent.drop === 'string') {
+      $.ui.log(`kit-cloud: cloud news not handed to Claude yet (${sent.drop}); trying again`, { to: 'debug' })
+      if (!toldPending) {
+        toldPending = true
+        const kinds = [...new Set(pending.map(e => String((e as { kind?: unknown })?.kind ?? '?')))].join(', ')
+        try { $.ui.toast(`☁ ${t.wakeFailed(kinds)}`) } catch { /* nowhere to show it */ }
+      }
+      return
+    }
+    pending = rest
+  } catch (err) {
+    $.ui.log(`kit-cloud: wake failed: ${String(err)}`, { to: 'debug' })
+  } finally {
+    waking = false
   }
 }
 
@@ -265,11 +328,15 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     try {
       previous = null // the first refresh below only seeds it: a reload never replays old events
+      interactive = (e as { isInteractive?: boolean }).isInteractive !== false
+      takeWorks = null
+      idleQueue = ''
+      pending = [] // a new session (or /clear): what the last one could not hand over was its own
       t = await pickLanguage($)
       await $.command.register({ name: 'cloud', description: t.commandDescription, argumentHint: '[all | track <url> [branch] | untrack <id> | watch | unwatch | doctor | help]' })
       scope = await findScope($, e.cwd)
       await refresh($)
-      $.clock.every(REFRESH_MS, () => { refresh($).catch(() => undefined) })
+      $.clock.every(REFRESH_MS, () => { refresh($, true).catch(() => undefined) })
       // Watching asks GitHub through gh; a missing node or gh only means no watch (see /cloud doctor). Not awaited:
       // a slow node or disk never holds the session's start.
       if (settings.autoWatch && slug) void startWatch($, slug)

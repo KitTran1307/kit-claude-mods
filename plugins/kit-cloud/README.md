@@ -19,7 +19,9 @@ background process for all your Claude sessions); kit-cloud reads its state and 
 installs kit-cloud-pilot with it.
 
 **Told when it matters:** while your session is open, kit-cloud shows a message and sends a notification the moment a
-cloud session asks you a question, opens a PR, fails CI, goes silent or finishes (`notifyInSession`). **Vietnamese**
+cloud session asks you a question, opens a PR, fails CI, goes silent or finishes (`notifyInSession`). **Claude is told
+too:** the news of the cloud sessions your session started reaches Claude in that session by itself, as a message from
+kit-cloud, so it can check the PR or answer the question without anything left running to wait (`wakeSession`). **Vietnamese**
 (tiếng Việt) is built in: the band, `/cloud` and the messages follow Claude Code's `language` setting, or set `language`.
 
 ## Requirements
@@ -81,6 +83,7 @@ Set them in `/config` (the plugin's rows), or in `~/.claude/settings.json` under
 | `showBand` | `true` | Draw the band (off keeps `/cloud`) |
 | `notifications` | `true` | System notification from the cloud-pilot hub when a session needs you and **no** Claude session is open for it (applies to tracks registered after you change it) |
 | `notifyInSession` | `true` | While a Claude session **is** open, show a message and a notification when a cloud session starts asking you a question, opens a PR, fails CI, goes silent or finishes. Nothing is replayed when a session starts or reloads. |
+| `wakeSession` | `true` | Hand Claude in this session the news of the cloud sessions it started (a question, a PR, a merge, a CI failure, silence, nothing pushed 20 minutes after the start) as a message from kit-cloud, once Claude is idle. Branches found by watching are not sent: they were not started here. Off: Claude hears only while it runs `cloud-pilot wait`. Needs kit-cloud-pilot 1.4.0 or later (older versions: nothing is sent). |
 | `language` | `auto` | `auto`: follow Claude Code's own `language` setting (Vietnamese when it is set to Vietnamese, English otherwise) · `en` · `vi`. Read when a session starts. |
 | `deleteMergedBranches` | `false` | Delete a `claude/*` branch you tracked with `/cloud track` after its PR merges, only while it still points at the merged commit. Branches found by watching (maybe a teammate's) are never deleted. Applies to tracks registered after you change it. |
 
