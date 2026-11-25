@@ -4,7 +4,8 @@
 import type { EngineInterface, FsEntry, FsStat } from 'claude-code'
 
 import { joinPath, parseLoginEmail } from './account'
-import { fitText } from './format'
+import { CACHE_TTL_1H_MS, CACHE_TTL_5M_MS, fitText } from './format'
+import type { CacheStamp } from './format'
 import type { HookFailure } from './i18n'
 
 export const MIB = 1024 * 1024
@@ -50,6 +51,55 @@ export function lastTitle(text: string): string {
   return lastEntryField(text, 'custom-title', 'customTitle') || lastEntryField(text, 'ai-title', 'aiTitle')
 }
 
+// The cache life a reply's own usage shows: 1 h when it wrote 1-hour tokens, 5 min when it wrote only 5-minute ones;
+// null when it wrote nothing (a reply that only read the cache, or touched it not at all).
+function writerTtl(message: Record<string, unknown> | null): number | null {
+  const created = record(record(message?.usage)?.cache_creation)
+  const hour = created?.ephemeral_1h_input_tokens
+  const five = created?.ephemeral_5m_input_tokens
+  if (typeof hour === 'number' && hour > 0) return CACHE_TTL_1H_MS
+  if (typeof five === 'number' && five > 0) return CACHE_TTL_5M_MS
+  return null
+}
+
+/**
+ * The prompt-cache stamp of the last main-thread reply: its `timestamp` and the life of the cache. The life is the
+ * one the most recent reply that WROTE cache set (1 hour when it wrote 1-hour tokens, 5 minutes when only 5-minute
+ * ones): a reply that only read the cache keeps it. With no writer to be found (no cache activity, or none within
+ * the entries looked at) the life is 5 minutes. Only the unescaped `"type":"assistant"` key counts; a line that does
+ * not parse, a subagent's (`isSidechain`) and an error stand-in (`<synthetic>` model) are skipped. The last real
+ * reply decides the time: with a field missing from it the answer is null (unknown), never an earlier reply's.
+ */
+export function lastCacheStamp(text: string): CacheStamp | null {
+  const key = '"type":"assistant"'
+  let at = text.lastIndexOf(key)
+  let stampAt: number | null = null
+  for (let tries = 0; at >= 0 && tries < 50; tries += 1) {
+    const start = text.lastIndexOf('\n', at) + 1
+    const end = text.indexOf('\n', at)
+    const entry = parseObject(text.slice(start, end < 0 ? undefined : end))
+    if (entry && entry.type === 'assistant' && entry.isSidechain !== true) {
+      const message = record(entry.message)
+      if (message?.model === '<synthetic>') {
+        // not a reply that touched the cache
+      } else if (stampAt === null) {
+        const stamp = typeof entry.timestamp === 'string' ? Date.parse(entry.timestamp) : NaN
+        const created = record(record(message?.usage)?.cache_creation)?.ephemeral_1h_input_tokens
+        if (!Number.isFinite(stamp) || typeof created !== 'number' || !Number.isFinite(created)) return null
+        const ttlMs = writerTtl(message)
+        if (ttlMs !== null) return { at: stamp, ttlMs }
+        stampAt = stamp
+      } else {
+        const ttlMs = writerTtl(message)
+        if (ttlMs !== null) return { at: stampAt, ttlMs }
+      }
+    }
+    if (start === 0) break
+    at = text.lastIndexOf(key, start - 1)
+  }
+  return stampAt === null ? null : { at: stampAt, ttlMs: CACHE_TTL_5M_MS }
+}
+
 // The session context's userEmail key (unescaped, so a real entry, not quoted text):
 // "userEmail":"The user's email address is <email>. ..."
 const EMAIL_KEY = `"userEmail":"The user's email address is `
@@ -68,6 +118,7 @@ export type HookErrors = { count: number; last: HookFailure | null }
 export const NO_HOOK_ERRORS: HookErrors = { count: 0, last: null }
 
 const HOOK_ERROR_TYPES = ['hook_non_blocking_error', 'hook_blocking_error']
+const HOOK_ROOM = 40
 const COMMAND_ROOM = 60
 const REASON_ROOM = 80
 
@@ -84,7 +135,7 @@ function hookFailure(att: Record<string, unknown>): HookFailure {
   const lines = raw.replace(/^Failed with non-blocking status code:\s*/i, '').split(/\r?\n/).map(l => l.trim()).filter(Boolean)
   const firstLine = lines.find(l => CAUSE.test(l)) ?? lines[0] ?? ''
   return {
-    hook: text(att.hookName) || text(att.hookEvent) || text(att.hook_event_name),
+    hook: fitText(text(att.hookName) || text(att.hookEvent) || text(att.hook_event_name), HOOK_ROOM),
     command: fitText(text(att.command) || text(nested?.command), COMMAND_ROOM),
     reason: fitText(firstLine.replace(/^Failed with non-blocking status code:\s*/i, ''), REASON_ROOM),
   }
@@ -151,7 +202,11 @@ export async function findTranscript($: EngineInterface, configDir: string, id: 
 }
 
 // ---------- the Node helper, when Node is there ----------
-export type HelperAnswer = { title: string; transcriptEmail: string; loginEmail: string; hookErrors: HookErrors | null }
+export type HelperAnswer = {
+  title: string; transcriptEmail: string; loginEmail: string; hookErrors: HookErrors | null
+  /** The helper's cacheStamp: null when it has none or an older helper left it out. */
+  cache: CacheStamp | null
+}
 /** Set once Node could not be started: it is not tried again until the module reloads. */
 export type NodeState = { missing: boolean }
 
@@ -162,7 +217,7 @@ function helperHookErrors(v: unknown): HookErrors | null {
   const last = record(o.last)
   return {
     count: Math.max(0, Math.round(o.count)),
-    last: last ? { hook: text(last.hook), command: text(last.command), reason: text(last.reason) } : null,
+    last: last ? { hook: fitText(text(last.hook), HOOK_ROOM), command: fitText(text(last.command), COMMAND_ROOM), reason: fitText(text(last.reason), REASON_ROOM) } : null,
   }
 }
 
@@ -186,7 +241,9 @@ export async function runHelper($: EngineInterface, args: readonly string[], nod
   const v = parseObject(stdout)
   if (!v) return null
   const str = (k: string): string => (typeof v[k] === 'string' ? (v[k] as string) : '')
-  return { title: str('title'), transcriptEmail: str('transcriptEmail'), loginEmail: str('loginEmail'), hookErrors: helperHookErrors(v.hookErrors) }
+  const c = record(v.cacheStamp)
+  const cache = c && typeof c.at === 'number' && Number.isFinite(c.at) && typeof c.ttlMs === 'number' && c.ttlMs > 0 ? { at: c.at, ttlMs: c.ttlMs } : null
+  return { title: str('title'), transcriptEmail: str('transcriptEmail'), loginEmail: str('loginEmail'), hookErrors: helperHookErrors(v.hookErrors), cache }
 }
 
 /** oauthAccount.emailAddress of the login record; '' when the file is missing, not JSON or holds none. */
@@ -207,9 +264,9 @@ export async function readLoginEmail($: EngineInterface, loginFile: string, node
 }
 
 // ---------- title and email of one session ----------
-export type Memo = { id: string; path: string; mtimeMs: number; size: number; title: string; email: string; hooks: HookErrors }
-export type Facts = { title: string; email: string; hooks: HookErrors }
-export type Lookup = { configDir: string; id: string; cwd: string; maxMB: number }
+export type Memo = { id: string; path: string; mtimeMs: number; size: number; title: string; email: string; hooks: HookErrors; cache: CacheStamp | null }
+export type Facts = { title: string; email: string; hooks: HookErrors; cache: CacheStamp | null }
+export type Lookup = { configDir: string; id: string; cwd: string; maxMB: number; /** false: the reply time is not parsed (default true). */ cache?: boolean }
 
 /**
  * The title, the session-context email and the hook failures of a session's transcript, read only when the file changed since `prev`.
@@ -226,18 +283,19 @@ export async function readTranscript(
     path = await findTranscript($, look.configDir, look.id, look.cwd)
     stat = path ? await statFile($, path) : null
   }
-  if (!stat) return { memo: null, facts: { title: '', email: '', hooks: NO_HOOK_ERRORS } }
+  if (!stat) return { memo: null, facts: { title: '', email: '', hooks: NO_HOOK_ERRORS, cache: null } }
   if (known && known.path === path && known.mtimeMs === stat.mtimeMs && known.size === stat.size) {
-    return { memo: known, facts: { title: known.title, email: known.email, hooks: known.hooks } }
+    return { memo: known, facts: { title: known.title, email: known.email, hooks: known.hooks, cache: known.cache } }
   }
 
-  let { title, email, hooks } = known ?? { title: '', email: '', hooks: NO_HOOK_ERRORS }
+  let { title, email, hooks, cache } = known ?? { title: '', email: '', hooks: NO_HOOK_ERRORS, cache: null as CacheStamp | null }
   if (stat.size <= Math.min(look.maxMB * MIB, FS_READ_CAP)) {
     try {
       const body = await $.fs.read(path)
       title = lastTitle(body)
       email = transcriptEmail(body) || email
       hooks = hookErrors(body)
+      if (look.cache !== false) cache = lastCacheStamp(body)
     } catch (err) {
       $.ui.log(`transcript not read: ${String(err)}`, { to: 'debug' })
     }
@@ -248,7 +306,8 @@ export async function readTranscript(
       title = answer.title || title
       email = answer.transcriptEmail || email
       hooks = answer.hookErrors ?? hooks
+      cache = answer.cache ?? cache
     }
   }
-  return { memo: { id: look.id, path, mtimeMs: stat.mtimeMs, size: stat.size, title, email, hooks }, facts: { title, email, hooks } }
+  return { memo: { id: look.id, path, mtimeMs: stat.mtimeMs, size: stat.size, title, email, hooks, cache }, facts: { title, email, hooks, cache } }
 }

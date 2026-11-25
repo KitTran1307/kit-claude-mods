@@ -1,7 +1,7 @@
 {
   "name": "usage-bar",
   "displayName": "Usage Bar",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "See your 5-hour and weekly limits, context and model at a glance, in the Claude desktop app too: a status bar with reset countdowns and a daily pace for the week.",
   "author": {
     "name": "KitTran1307"
@@ -69,6 +69,18 @@
       "type": "boolean",
       "title": "Warn about failing hooks",
       "description": "Adds a warning such as \"3 hook errors (Stop)\" to the band when hooks failed in this session (a missing script, a deleted plugin folder). Press it to see which hook, its command and why. The failures are read from this session's own transcript.",
+      "default": true
+    },
+    "showCacheClock": {
+      "type": "boolean",
+      "title": "Show the prompt-cache clock",
+      "description": "Shown by default. A small countdown (\"cache 4:07\") for how long Claude can still reuse this conversation cheaply and quickly; it turns red once it has run out. Read from this session's own transcript.",
+      "default": true
+    },
+    "showForecast": {
+      "type": "boolean",
+      "title": "Show the 5-hour forecast",
+      "description": "Shown by default. Next to the 5-hour percentage, a guess such as \"→ 85%\" of where it will stand when the window ends if you keep the current pace. Appears once a tenth of the window has passed.",
       "default": true
     },
     "maxTranscriptMB": {

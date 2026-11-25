@@ -1,0 +1,46 @@
+{
+  "name": "kit-themes",
+  "displayName": "Themes",
+  "version": "1.0.0",
+  "description": "Three original themes for the Claude desktop and mobile apps: Paper (warm light), High Contrast (WCAG AAA) and Night (low blue light). Auto follows light or dark mode, so installing it already shows a theme; /themes picks another or turns it off.",
+  "author": {
+    "name": "Kit Tran",
+    "url": "https://github.com/KitTran1307"
+  },
+  "homepage": "https://github.com/KitTran1307/kit-claude-mods/tree/main/plugins/kit-themes",
+  "repository": "https://github.com/KitTran1307/kit-claude-mods",
+  "license": "MIT",
+  "keywords": [
+    "theme",
+    "accessibility",
+    "high-contrast",
+    "dark-mode",
+    "night"
+  ],
+  "userConfig": {
+    "theme": {
+      "type": "string",
+      "title": "Theme to start with",
+      "description": "auto: Paper in light mode, Night in dark mode. paper, contrast, night: always that theme. off: no theme. A choice made with /themes is remembered and wins over this.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "paper",
+        "contrast",
+        "night",
+        "off"
+      ]
+    },
+    "language": {
+      "type": "string",
+      "title": "Language of /themes",
+      "description": "auto: Vietnamese when Claude Code's own language setting is Vietnamese, English otherwise (looked up once at session start). en: always English. vi: always Vietnamese (Tiếng Việt).",
+      "default": "auto",
+      "options": [
+        "auto",
+        "en",
+        "vi"
+      ]
+    }
+  }
+}

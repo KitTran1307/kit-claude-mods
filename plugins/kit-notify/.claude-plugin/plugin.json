@@ -1,0 +1,77 @@
+{
+  "name": "kit-notify",
+  "displayName": "Notify",
+  "version": "1.0.0",
+  "description": "A sound and a system notification when Claude finishes or needs you, a queue for prompts you type while Claude works (sent one at a time, with a remove button each), and a \"while you were away\" card when you come back. English and Vietnamese.",
+  "author": {
+    "name": "Kit Tran",
+    "url": "https://github.com/KitTran1307"
+  },
+  "homepage": "https://github.com/KitTran1307/kit-claude-mods/tree/main/plugins/kit-notify",
+  "repository": "https://github.com/KitTran1307/kit-claude-mods",
+  "license": "MIT",
+  "keywords": [
+    "notification",
+    "sound",
+    "queue",
+    "prompt queue",
+    "away",
+    "band"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "sound": {
+      "type": "boolean",
+      "title": "Play a sound",
+      "description": "A short sound when Claude finishes a turn that took a while and a different one when it needs you. Plays through the system when it can (macOS, Windows, Linux with PulseAudio, ALSA or libcanberra); where nothing can play, it stays silent.",
+      "default": true
+    },
+    "notify": {
+      "type": "boolean",
+      "title": "Show a system notification",
+      "description": "A notification with a title and one line when Claude finishes or needs you, through your terminal's or the app's own notification channel. Where there is none, a short in-app message shows instead.",
+      "default": true
+    },
+    "notifyAfterSec": {
+      "type": "number",
+      "title": "Only notify for turns longer than (seconds)",
+      "description": "A finished turn notifies (sound and notification) only when it ran at least this many seconds. Needs-you alerts always come. 0 notifies after every turn; a value outside 0 to 3600 is cut to it.",
+      "default": 20
+    },
+    "notifyDetails": {
+      "type": "boolean",
+      "title": "Put the start of Claude's answer in the notification",
+      "description": "On: the notification's line is the first line of Claude's last message, or the question it asks. Off: a fixed line that says nothing about your work (useful on a shared screen).",
+      "default": true
+    },
+    "quietHours": {
+      "type": "string",
+      "title": "Quiet hours",
+      "description": "No sound or notification between these local times, for example 22:00-07:00 (it may cross midnight). Empty, the default, means never quiet. A value that is not two times is ignored.",
+      "default": ""
+    },
+    "awayMin": {
+      "type": "number",
+      "title": "Welcome-back card after (minutes)",
+      "description": "When you come back after at least this many minutes without typing or sending, and something happened meanwhile, a card sums it up. 0 turns the card off; a value outside 0 to 1440 is cut to it.",
+      "default": 10
+    },
+    "showQueueButton": {
+      "type": "boolean",
+      "title": "Show the \"Queue what I typed\" button while Claude works",
+      "description": "On: while a turn runs and the prompt box holds text, the band offers a button that puts it into the queue (and the button is part of the queue list). Off: only /queue add and the queued list show. The queue itself keeps working.",
+      "default": true
+    },
+    "language": {
+      "type": "string",
+      "title": "Language of the band, card, notifications and /queue",
+      "description": "auto: Vietnamese when Claude Code's own language setting is Vietnamese, English otherwise (looked up once at session start). en: always English. vi: always Vietnamese (Tiếng Việt). What a queued prompt says is sent as you typed it.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "en",
+        "vi"
+      ]
+    }
+  }
+}

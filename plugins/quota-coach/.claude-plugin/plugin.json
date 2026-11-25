@@ -1,0 +1,52 @@
+{
+  "name": "quota-coach",
+  "displayName": "Quota Coach",
+  "version": "1.0.0",
+  "description": "See what is using your plan's limits and what to do about it: one-line tips, a \"why did that cost so much\" card, a pre-send estimate and a daily report.",
+  "author": {
+    "name": "KitTran1307"
+  },
+  "homepage": "https://github.com/KitTran1307/kit-claude-mods",
+  "repository": "https://github.com/KitTran1307/kit-claude-mods",
+  "license": "MIT",
+  "keywords": [
+    "usage",
+    "limits",
+    "quota",
+    "rate-limits",
+    "tips",
+    "report"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "description": "auto: Vietnamese when Claude Code's own language setting is Vietnamese, English otherwise (looked up once at session start). en: always English. vi: always Vietnamese (Tiếng Việt).",
+      "default": "auto",
+      "options": [
+        "auto",
+        "en",
+        "vi"
+      ]
+    },
+    "tips": {
+      "type": "boolean",
+      "title": "Show saving tips",
+      "description": "Shown by default. A one-line tip above the prompt when something is using your limits needlessly (a very full context, a cold cache, many subagents, a strong model on light work). Never acts by itself.",
+      "default": true
+    },
+    "estimate": {
+      "type": "boolean",
+      "title": "Show the pre-send estimate",
+      "description": "Shown by default. While you type, \"This turn ~3% of 5H\": a guess from the size of the conversation, the model and what recent turns measured. Appears after a few turns have taught it your rate.",
+      "default": true
+    },
+    "contextTipPercent": {
+      "type": "number",
+      "title": "Context level for the compact tip (%)",
+      "description": "How full the context window must be before the tip suggests /compact. Between 30 and 95.",
+      "default": 70
+    }
+  }
+}

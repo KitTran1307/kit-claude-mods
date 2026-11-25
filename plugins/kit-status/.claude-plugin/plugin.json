@@ -1,0 +1,19 @@
+{
+  "name": "kit-status",
+  "displayName": "Status Dot",
+  "version": "1.0.0",
+  "description": "A colored dot at the start of each session's name in the Claude desktop app's sidebar: 🔵 working, ⏳ waiting for a background command or agent, 🟠 waiting for your answer, ✅ done.",
+  "author": {
+    "name": "Kit Tran",
+    "url": "https://github.com/KitTran1307"
+  },
+  "homepage": "https://github.com/KitTran1307/kit-claude-mods/tree/main/plugins/kit-status",
+  "repository": "https://github.com/KitTran1307/kit-claude-mods",
+  "license": "MIT",
+  "keywords": [
+    "sidebar",
+    "status",
+    "sessions",
+    "desktop"
+  ]
+}

@@ -118,6 +118,7 @@ Set them in any of these ways:
 | `/todo suggestions` | Lists the tasks Claude has suggested and you have not yet added or dismissed, numbered. |
 | `/todo accept <number>` / `/todo accept all` | Adds that suggestion (or all of those listed) to the todos file, with its date and note. |
 | `/todo reject <number>` / `/todo reject all` | Dismisses that suggestion (or all of those listed). Nothing is written. |
+| `/todo doctor` | Checks the setup and prints one line per check (see below). It only reads: it changes and deletes nothing. |
 
 Without a task or a number, `/todo add` and `/todo done` print their usage and change nothing. The number in
 `/todo done` always refers to the last `/todo` list in this session, even if another session has changed the list
@@ -140,6 +141,23 @@ send it. This keeps a todos file edited by someone else, or imported, from slipp
 The prompt Claude receives asks it to end its last reply with the line `kit-todos done <id>` once the task is finished
 and verified, and to ask you before it decides anything on your behalf. The plugin reads that line and marks the task
 done itself, so Claude never edits your todos file (and you get no permission prompt for it).
+
+### `/todo doctor`
+
+Each check prints one line: `PASS <name> - <detail>`, `WARN <name> - <detail> Fix: <hint>` or
+`FAIL <name> - <detail> Fix: <hint>`, then a summary line. The lines show names, counts and sizes only, never what your
+files hold, and the words follow your language setting (English or Vietnamese).
+
+| Check | What it looks at |
+| --- | --- |
+| `claude-code` | The Claude Code version against the oldest one this plugin is meant for (2.1.275). If the version cannot be read, it says so quietly (a WARN, never a FAIL). |
+| `node` | Whether Node.js 18 or later is installed. Without it the suggestion feature switches itself off and everything else works, so it is a WARN. |
+| `todos-file` | Where the todos file is, and whether it is readable valid JSON. A file that does not exist yet is fine: an empty list. |
+| `todos-folder` | That the folder exists. Whether it can be written is only known when a task is added, because a test file could be left behind. |
+| `lock` | The lock file beside the todos file. A lock left by a stopped writer is reported as stale; the next change takes it over by itself, and the doctor never deletes it. |
+| `memories` | How many config folders hold memories for this project. |
+| `settings` | Options that hide parts of the plugin: `showBand`, `showMemories`, `allowSuggestions`. |
+| `language` | The language in use and the option that chose it. |
 
 ## Tasks Claude suggests
 

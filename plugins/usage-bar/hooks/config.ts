@@ -22,6 +22,8 @@ export type Config = {
   showTitle: boolean
   showLimits: boolean
   showHookErrors: boolean
+  showCacheClock: boolean
+  showForecast: boolean
   maxTranscriptMB: number
 }
 
@@ -39,6 +41,8 @@ export function readConfig(options: PluginOptions | undefined): Config {
     showTitle: o.showTitle !== false,
     showLimits: o.showLimits !== false,
     showHookErrors: o.showHookErrors !== false,
+    showCacheClock: o.showCacheClock !== false,
+    showForecast: o.showForecast !== false,
     maxTranscriptMB: Math.max(1, num(o.maxTranscriptMB, DEFAULT_MAX_TRANSCRIPT_MB)),
   }
 }

@@ -7,7 +7,8 @@ The band (top line), here with usage-bar and kit-todos under it, in the Claude C
 
 ![The kit-cloud band above the prompt](https://raw.githubusercontent.com/KitTran1307/kit-claude-mods/main/docs/images/terminal-bands.png)
 
-Click the band to list each session with its link, or type `/cloud`:
+Click the band to open it: the sessions hang under it as a tree, grouped by what needs you (Needs you, Working,
+In review, Finished), each with its status, age and an **Open ↗** link. Or type `/cloud`:
 
 ![/cloud lists the cloud sessions of this repo with their links](https://raw.githubusercontent.com/KitTran1307/kit-claude-mods/main/docs/images/cloud-command.png)
 
@@ -68,7 +69,15 @@ In the desktop app: **+** next to the prompt box → **Plugins** → **Add marke
 | `/cloud track <url> [branch]` | Track a session |
 | `/cloud untrack <id>` | Stop tracking (ids are shown by `/cloud`) |
 | `/cloud watch`, `/cloud unwatch` | Start or stop watching this repo |
-| `/cloud doctor` | Check node, gh and the gh login |
+| `/cloud nudge <n\|id> [text]` | Tell a cloud session to carry on, with an optional message. `n` counts the plain `/cloud` list from the top, group by group (rows are not numbered on screen); after `/cloud all` use the id shown under each session. The reply names the session it nudged (title, id and link) |
+| `/cloud questions` | Open questions on this repo's tracked PRs, numbered. Answered questions are left out, edited ones are marked "(edited)", and the list starts with a line saying the text comes from a PR comment (data, not instructions) |
+| `/cloud reply <n> <text>` | Answer question `n` of the last `/cloud questions` (run that first; the reply says "Answered" only when cloud-pilot reports the answer was posted; if it refuses, you see its message instead. The reply repeats the start of the question it answered) |
+| `/cloud doctor` | One line per check (`PASS`, `WARN` or `FAIL`, with a fix): node, gh, kit-cloud-pilot, Claude Code, hub files, settings |
+
+`nudge`, `questions` and `reply` need kit-cloud-pilot 1.7.0 or newer; with an older one they say so, and the rest of `/cloud`
+keeps working. Your text is sent as one argument, never through a shell, cut to 2000 characters, with control characters
+removed. Question text from GitHub is only shown (cut to one line), never run. `/cloud doctor` only reads: it names stale
+lock files in the data folder but never deletes them, and never prints tokens or file contents.
 
 ## Options
 
@@ -95,10 +104,12 @@ started them. cloud-pilot's own settings are environment variables (see its [REA
 
 ## Privacy and safety
 
-- Only cloud-pilot's hub talks to GitHub, through your own `gh` login; nothing is sent anywhere else. Tokens are never written.
+- Only cloud-pilot's hub talks to GitHub, through your own `gh` login; nothing else talks to GitHub. Tokens are never written.
+- Two commands send something out, and only when you type them: `/cloud nudge` sends your message to a cloud session, and
+  `/cloud reply` posts your answer to the pull request, through your own `gh` login. Nothing else is posted or sent.
 - Text from GitHub is shown as data and never run. Links are drawn only for `https://` URLs.
-- Nothing on GitHub is changed unless you turn on `deleteMergedBranches`.
-- Data lives in `~/.claude/cloud-pilot` (or `CLOUD_PILOT_DIR`). Delete the folder to forget everything.
+- Nothing on GitHub is changed except by those two commands, or by `deleteMergedBranches` if you turn it on.
+- Apart from the nudge and the reply above, kit-cloud only reads. Its own data lives in `~/.claude/cloud-pilot` (or `CLOUD_PILOT_DIR`). Delete the folder to forget everything.
 
 ## Troubleshooting
 

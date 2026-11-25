@@ -48,7 +48,7 @@ export function fromHub(r: HubRow): CloudRow {
 
 /** Only http(s) links are ever drawn as links: the hub file is local data, but a link is something a person clicks. */
 export function safeUrl(u: unknown): string {
-  return typeof u === 'string' && /^https:\/\/[^\s]+$/i.test(u) ? u : ''
+  return typeof u === 'string' && /^https:\/\/[^\s\u0000-\u001F\u007F-\u009F]+$/i.test(u) ? u : ''
 }
 
 function mins(seconds: number): number {
@@ -189,21 +189,106 @@ export function grouped(rows: CloudRow[]): Array<{ key: GroupKey; rows: CloudRow
 }
 
 /** The folded band's line: what needs the person first (in the accent), else "Nothing needs you", then the counts. */
-export function headline(rows: CloudRow[], t: Strings = EN): Array<{ text: string; strong: boolean }> {
+export function headline(rows: CloudRow[], t: Strings = EN): Array<{ text: string; strong: boolean; group?: GroupKey }> {
   const count = (k: GroupKey) => rows.filter(r => groupOf(r) === k).length
-  const parts: Array<{ text: string; strong: boolean }> = []
-  parts.push(count('needs') ? { text: t.needsYou(count('needs')), strong: true } : { text: t.nothingNeedsYou, strong: false })
-  if (count('running')) parts.push({ text: t.sumWorking(count('running')), strong: false })
-  if (count('review')) parts.push({ text: t.inReview(count('review')), strong: false })
-  if (count('finished')) parts.push({ text: t.sumFinished(count('finished')), strong: false })
+  const parts: Array<{ text: string; strong: boolean; group?: GroupKey }> = []
+  parts.push(count('needs') ? { text: t.needsYou(count('needs')), strong: true, group: 'needs' } : { text: t.nothingNeedsYou, strong: false })
+  if (count('running')) parts.push({ text: t.sumWorking(count('running')), strong: false, group: 'running' })
+  if (count('review')) parts.push({ text: t.inReview(count('review')), strong: false, group: 'review' })
+  if (count('finished')) parts.push({ text: t.sumFinished(count('finished')), strong: false, group: 'finished' })
   return parts
 }
 
+/** Each group's color, its name and its rows alike: Claude's orange for what needs the person. */
+export const GROUP_COLOR: Record<GroupKey, string> = { needs: 'claude', running: 'success', review: 'suggestion', finished: 'inactive' }
+
+/** The mark before a group's count on the folded band: a dot for a live group, a tick for the finished. */
+export const groupDot = (k: GroupKey): string => (k === 'finished' ? '✓' : '●')
+
+/** One line of the open band, under its header: a group's name, a session, the finished folded, or what did not fit. */
+export type BandLine =
+  | { kind: 'group'; key: GroupKey }
+  | { kind: 'row'; key: GroupKey; row: CloudRow; last: boolean }
+  | { kind: 'folded'; count: number }
+  | { kind: 'more'; hidden: number }
+
+/**
+ * The open band's lines, most urgent first, in at most `budget` lines (2 at least): every group with its sessions;
+ * when that is too tall the finished fold into one line, and past that the lines that do not fit become "n more".
+ */
+export function bandPlan(rows: CloudRow[], budget: number): BandLine[] {
+  const max = Math.max(2, Math.floor(budget))
+  const groups = grouped(rows)
+  const lines = (foldFinished: boolean): BandLine[] => groups.flatMap((g): BandLine[] => {
+    if (g.key === 'finished' && foldFinished) return [{ kind: 'folded', count: g.rows.length }]
+    return [{ kind: 'group', key: g.key }, ...g.rows.map((row, i): BandLine => ({ kind: 'row', key: g.key, row, last: i === g.rows.length - 1 }))]
+  })
+  const full = lines(false)
+  if (full.length <= max) return full
+  const folded = lines(true)
+  if (folded.length <= max) return folded
+  const kept = folded.slice(0, max - 1)
+  while (kept.length && kept[kept.length - 1]!.kind === 'group') kept.pop() // a name with none of its sessions under it
+  const end = kept[kept.length - 1]
+  if (end?.kind === 'row') kept[kept.length - 1] = { ...end, last: true } // the tree ends here: "n more" is not a session
+  const shown = kept.reduce((n, l) => n + (l.kind === 'row' ? 1 : l.kind === 'folded' ? l.count : 0), 0)
+  return [...kept, { kind: 'more', hidden: rows.length - shown }]
+}
+
+/** Cells a text takes on the terminal, counted as the band's own texts are (one per character). */
+const cells = (s: string) => [...s].length
+
+/**
+ * The widths of a band session line in `cols` cells: lead (7) + mark (2) + [where] + task + status + [age] + link.
+ * The task gives way first (down to 6), then the status, the age and the where, so a line never passes `cols`
+ * from 40 columns up. `linkW` holds one cell of slack: ↗ is drawn wide by a few terminals.
+ */
+export function rowLayout(cols: number, withAccount: boolean, withRepo: boolean, linkW: number): { ctxW: number; titleW: number; detailW: number; showAge: boolean } {
+  let ctxW = withAccount && withRepo ? 22 : withRepo ? 15 : withAccount ? 9 : 0
+  let detailW = cols >= 90 ? 26 : cols >= 70 ? 20 : 16
+  let showAge = cols >= 72
+  const link = linkW + 1
+  const fixed = () => 7 + 2 + (ctxW ? ctxW + 1 : 0) + 1 + detailW + 1 + (showAge ? 7 : 0) + link
+  const room = () => cols - fixed()
+  if (room() < 12 && showAge) showAge = false
+  if (room() < 12 && ctxW > 10) ctxW = 10
+  if (room() < 10 && detailW > 10) detailW = 10
+  if (room() < 8 && ctxW) ctxW = 0
+  return { ctxW, titleW: Math.max(6, Math.min(52, room())), detailW, showAge }
+}
+
+/**
+ * Which parts of the band's header line fit in `cols` (the Button's brackets take 4): the repo after the name, a dot
+ * before each count, the counts after the first. Dropped in that order, so the line never wraps.
+ */
+export function headerFit(cols: number, name: string, where: string, parts: Array<{ text: string; group?: GroupKey }>, hint: string, isOpen: boolean): { where: boolean; dots: boolean; count: number } {
+  const width = (w: boolean, dots: boolean, count: number) => 4 + cells(name) + (w && where ? 3 + cells(where) : 0)
+    + parts.slice(0, count).reduce((n, p, i) => n + (isOpen ? (i ? 3 : 3) : (i ? 3 : 2)) + (dots && p.group && !isOpen ? 2 : 0) + cells(p.text), 0)
+    + 3 + cells(hint)
+  const tries: Array<[boolean, boolean, number]> = [[true, true, parts.length], [false, true, parts.length], [false, false, parts.length]]
+  for (let n = parts.length - 1; n >= 1; n--) tries.push([false, false, n])
+  for (const [w, dots, count] of tries) if (width(w, dots, count) <= cols) return { where: w && Boolean(where), dots, count }
+  return { where: false, dots: false, count: Math.min(1, parts.length) }
+}
+
+/** Rows a wrapped text takes in `cols` cells. */
+export function wrappedRows(text: string, cols: number): number {
+  return Math.max(1, Math.ceil(cells(text) / Math.max(1, cols)))
+}
+
+/** A session's mark and its color: a PR whose CI failed is marked as failing, whatever its state word says. */
+export function markOf(r: CloudRow): { mark: string; color: string } {
+  if (r.state === 'pr' && /CI failed/i.test(r.detail)) return { mark: '✕', color: 'error' }
+  const m = MARK[r.state]
+  return { mark: m.mark, color: m.color }
+}
+
+// One-cell marks only (no emoji): the columns after them stay in line on every terminal.
 export const MARK: Record<CloudState, { mark: string; color: string; word: string }> = {
   working: { mark: '●', color: 'success', word: EN.word.working },
-  pr: { mark: '◐', color: 'warning', word: EN.word.pr },
-  question: { mark: '?', color: 'warning', word: EN.word.question },
-  silent: { mark: '⚠', color: 'error', word: EN.word.silent },
+  pr: { mark: '◐', color: 'suggestion', word: EN.word.pr },
+  question: { mark: '?', color: 'claude', word: EN.word.question },
+  silent: { mark: '◌', color: 'claude', word: EN.word.silent },
   done: { mark: '✓', color: 'inactive', word: EN.word.done },
   closed: { mark: '✕', color: 'inactive', word: EN.word.closed },
   ended: { mark: '✕', color: 'inactive', word: EN.word.ended },
@@ -220,19 +305,27 @@ export function fit(s: string, w: number): string {
   return (chars.length > w ? chars.slice(0, Math.max(0, w - 1)).join('') + '…' : chars.join('')).padEnd(w)
 }
 
+/**
+ * /cloud's text: the band's tree, every session listed. A session is one line (mark, task, status, age) and a dim one
+ * under it (its id for /cloud untrack, the account and repo when the list spans several, its link).
+ */
 export function table(rows: CloudRow[], nowEpoch: number, where = '', t: Strings = EN): string {
   const scopeText = where ? ` (${where})` : ''
   if (rows.length === 0) return t.tableNone(scopeText)
-  // The account column grows to fit its heading and the task column gives the room back, so the table keeps its width.
-  const accountW = Math.max(8, [...t.colAccount].length)
-  const taskW = 26 - (accountW - 8)
-  const lines = [t.tableHead(rows.length, scopeText), '',
-    `  ${fit(t.colId, 10)} ${fit(t.colAccount, accountW)} ${fit(t.colRepo, 14)} ${fit(t.colTask, taskW)} ${fit(t.colStatus, 24)} ${t.colAge.padStart(5)}`]
-  for (const r of rows) {
-    const m = MARK[r.state]
-    lines.push(`${m.mark} ${fit(r.id, 10)} ${fit(r.account, accountW)} ${fit(r.repo, 14)} ${fit(r.title, taskW)} ${fit(r.detail, 24)} ${agoText(r.startedEpoch, nowEpoch).padStart(5)}`)
-    if (r.url) lines.push(`  ${r.url}`)
-  }
+  const withAccount = new Set(rows.map(r => r.account)).size > 1
+  const withRepo = new Set(rows.map(r => r.repo)).size > 1
+  const lines = [t.tableHead(rows.length, scopeText), '']
+  grouped(rows).forEach((g, gi) => {
+    lines.push(`${gi === 0 ? '⎿  ' : '   '}${t.group[g.key]} · ${g.rows.length}`)
+    g.rows.forEach((r, i) => {
+      const last = i === g.rows.length - 1
+      const ctx = [withAccount ? r.account : '', withRepo ? r.repo : ''].filter(Boolean).map(s => fit(s, 40).trim()).join(' · ')
+      const title = withRepo ? r.title : shortTitle(r.title, r.repo)
+      lines.push(`   ${last ? '└' : '├'} ${markOf(r).mark} ${fit(title, 40)} ${fit(r.detail, 26)} ${agoText(r.startedEpoch, nowEpoch).padStart(5)}`)
+      // The link first, so a narrow terminal wraps after it, never through it.
+      lines.push(`   ${last ? ' ' : '│'}   ${[r.url, fit(r.id, 10).trim(), ctx].filter(Boolean).join(' · ')}`)
+    })
+  })
   lines.push('', t.legend)
   return lines.join('\n')
 }
@@ -264,7 +357,7 @@ export function inScope(row: { account?: string; repoRoot?: string; repo?: strin
 
 /** "owner/name" from a GitHub remote URL (https, ssh, git@), or '' for anything else. */
 export function ghSlug(remote: string): string {
-  const m = /github\.com[:/]+([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i.exec(String(remote).trim())
+  const m = /github\.com[:/]+([A-Za-z0-9][\w.-]*)\/([A-Za-z0-9][\w.-]*?)(?:\.git)?\/?$/i.exec(String(remote).trim())
   return m ? `${m[1]}/${m[2]}` : ''
 }
 
@@ -275,19 +368,59 @@ export type CloudCommand =
   | { verb: 'watch' }
   | { verb: 'unwatch' }
   | { verb: 'doctor' }
+  | { verb: 'nudge'; target: string; text: string }
+  | { verb: 'questions' }
+  | { verb: 'reply'; n: number; text: string }
   | { verb: 'help'; error?: string }
 
 /** The command list in English; `Strings.usage` holds each language's. */
 export const USAGE = EN.usage
 
+/** The longest nudge or reply text sent on. */
+export const MAX_TEXT = 2000
+
+/** A value for a flag: one leading space when it starts with '-', so no parser reads it as an option. */
+export function flagValue(s: string): string {
+  return s.startsWith('-') ? ` ${s}` : s
+}
+
+/** Text from a person or from GitHub as one plain line: control, zero-width and direction characters out, cut at `max`. */
+export function cleanText(s: unknown, max = MAX_TEXT): string {
+  const flat = String(s ?? '')
+    .replace(/\u001b\[[0-9;?]*[ -\/]*[@-~]/g, '') // colour and cursor codes go whole, not just their escape
+    .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069\uFEFF]+/g, ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim()
+  return [...flat].length > max ? [...flat].slice(0, max - 1).join('') + '…' : flat
+}
+
+/** The first word of `text` and the rest of it, whitespace between them dropped. */
+function splitFirst(text: string): [string, string] {
+  const m = /^(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim())
+  return m ? [m[1]!, m[2] ?? ''] : ['', '']
+}
+
 export function parseCommand(args: string, t: Strings = EN): CloudCommand {
-  const [first = '', ...rest] = String(args ?? '').trim().split(/\s+/).filter(Boolean)
+  const raw = String(args ?? '')
+  const [first = '', ...rest] = raw.trim().split(/\s+/).filter(Boolean)
   const verb = first.toLowerCase()
   if (!verb) return { verb: 'list', all: false }
   if (verb === 'all') return { verb: 'list', all: true }
   if (verb === 'watch') return { verb: 'watch' }
   if (verb === 'unwatch') return { verb: 'unwatch' }
   if (verb === 'doctor') return { verb: 'doctor' }
+  if (verb === 'questions') return { verb: 'questions' }
+  if (verb === 'nudge') {
+    const [target, text] = splitFirst(raw.trim().slice(first.length))
+    return /^\d{1,3}$/.test(target) || /^[0-9a-f]{6,40}$/i.test(target)
+      ? { verb: 'nudge', target, text: cleanText(text) }
+      : { verb: 'help', error: t.errNudgeTarget }
+  }
+  if (verb === 'reply') {
+    const [num, text] = splitFirst(raw.trim().slice(first.length))
+    const clean = cleanText(text)
+    return /^\d{1,3}$/.test(num) && Number(num) > 0 && clean ? { verb: 'reply', n: Number(num), text: clean } : { verb: 'help', error: t.errReplyArgs }
+  }
   if (verb === 'untrack') {
     const id = rest[0] ?? ''
     return /^[0-9a-f]{6,40}$/i.test(id) ? { verb: 'untrack', id } : { verb: 'help', error: t.errUntrackId }
@@ -337,4 +470,79 @@ function kindOfChange(before: Snapshot, row: CloudRow): ChangeKind | null {
   if (row.state === 'silent') return 'silent'
   if (FINISHED.has(row.state) && !FINISHED.has(before.state)) return 'finished'
   return null
+}
+
+/** The row number `n` (1-based, in the order /cloud lists them, group by group) to its track id; '' when there is none. */
+export function rowIdAt(rows: CloudRow[], n: number): string {
+  return grouped(rows).flatMap(g => g.rows)[n - 1]?.id ?? ''
+}
+
+/** What `cloud-pilot nudge`/`questions`/`answer` say when this cloud-pilot does not know the command. */
+export function pilotLacks(r: Record<string, unknown>): boolean {
+  if (r.ok !== false) return false
+  const msg = String(r.message ?? r.error ?? '')
+  return /unknown|unrecogni[sz]ed|unsupported|usage:|no such command|not a (known )?command|invalid command/i.test(msg) || /^exit \d+$/.test(msg)
+}
+
+/** One open question of a tracked PR, from `cloud-pilot questions`; id and hash '' when the output has none. */
+export type PilotQuestion = { pr: number; id: string; sha: string; text: string; who: string; edited: boolean; url: string }
+
+const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' && Number.isFinite(v) ? String(v) : '')
+
+/** The open questions in `questions` output ({status:"ok", questions:[...]}); answered ones are left out; anything else is none. */
+export function parseQuestions(out: unknown, pr: number): PilotQuestion[] {
+  const list = (out as Record<string, unknown> | null)?.questions
+  if (!Array.isArray(list)) return []
+  const found: PilotQuestion[] = []
+  for (const it of list as unknown[]) {
+    if (!it || typeof it !== 'object') continue
+    const q = it as Record<string, unknown>
+    if (q.answered === true) continue
+    const id = str(q.id)
+    const sha = str(q.question_sha256)
+    const author = q.author
+    const who = cleanText(typeof author === 'object' && author ? str((author as Record<string, unknown>).login) : str(author), 40)
+    found.push({
+      pr,
+      // These two go into an argv: only tool-made identifiers (no spaces, no leading dash) are kept.
+      id: /^[A-Za-z0-9][\w.:-]{0,63}$/.test(id) ? id : '',
+      sha: /^[0-9a-f]{8,128}$/i.test(sha) ? sha : '',
+      text: cleanText(q.untrusted_question, 160) || '?',
+      who,
+      edited: q.edited === true,
+      url: safeUrl(q.url),
+    })
+  }
+  return found
+}
+
+/** The PR number of a hub row: from its PR link, else "PR #n" in its detail; 0 when it has none. */
+export function prNumber(r: HubRow): number {
+  const m = /\/pull\/(\d+)/.exec(String(r.prUrl ?? '')) ?? /PR #(\d+)/.exec(String(r.detail ?? ''))
+  return m ? Number(m[1]) : 0
+}
+
+/** [major, minor, patch] of the first x.y.z in a version text; null when there is none. */
+export function versionParts(v: unknown): [number, number, number] | null {
+  const m = /(\d+)\.(\d+)\.(\d+)/.exec(String(v ?? ''))
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
+}
+
+/** True when version `v` is older than `min`; false when either is unreadable. */
+export function olderThan(v: unknown, min: string): boolean {
+  const a = versionParts(v)
+  const b = versionParts(min)
+  if (!a || !b) return false
+  for (let i = 0; i < 3; i++) if (a[i]! !== b[i]!) return a[i]! < b[i]!
+  return false
+}
+
+export type CheckLevel = 'PASS' | 'WARN' | 'FAIL'
+export type Check = { level: CheckLevel; name: string; detail: string; fix?: string }
+
+/** "PASS name - detail" or "WARN name - detail Fix: hint": one line each, no secrets, no line breaks. */
+export function checkLine(c: Check): string {
+  const detail = cleanText(c.detail, 240)
+  const fix = c.fix ? ` Fix: ${cleanText(c.fix, 200)}` : ''
+  return `${c.level} ${c.name} - ${detail}${c.level === 'PASS' ? '' : fix}`
 }

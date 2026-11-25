@@ -9,6 +9,8 @@ import {
   doneMarks, statusOf, taskPrompt, usableTodos, validDue, listRowTextCells, textCells,
 } from './data'
 import type { Status, SuggestionPlan } from './data'
+import { MIN_CLAUDE_CODE, countLevels, folderOf, formatLine, lockState, versionAtLeast, parseVersion } from './doctor'
+import type { Line } from './doctor'
 import { languageFromSetting, languageOption, stringsFor } from './i18n'
 import type { Lang, Strings } from './i18n'
 
@@ -393,7 +395,8 @@ function relayedProposals(out: { content?: { type: string; text?: string }[]; is
 
 /** The plugin's MCP server under the name `$.mcp.call` takes, or null while it cannot be reached (retried later). */
 /** Whether Node.js 18 or later runs on this machine, looked at once per load. */
-function hasNode($: EngineInterface, ctx: Ctx): Promise<boolean> {
+function hasNode($: EngineInterface, ctx: Ctx, fresh = false): Promise<boolean> {
+  if (fresh) ctx.node = undefined
   ctx.node ??= $.process.run(['node', '-p', 'process.versions.node.split(".")[0]'], { timeoutMs: 10_000 })
     .then(r => r.exitCode === 0 && Number(r.stdout.trim()) >= 18)
     .catch(() => false)
@@ -531,6 +534,115 @@ async function pickedSuggestions($: EngineInterface, ctx: Ctx, verb: 'accept' | 
   return pending.has(id) ? { ids: [id] } : { text: ctx.t.nothingToHandle }
 }
 
+/** The Claude Code version this session runs: the engine's own answer, else `claude --version`; null when neither works. */
+async function claudeVersion($: EngineInterface): Promise<string | null> {
+  try {
+    const v = await $.session.version()
+    if (parseVersion(v?.base ?? v?.version)) return String(v.base ?? v.version)
+  } catch { /* try the command */ }
+  try {
+    const r = await $.process.run(['claude', '--version'], { timeoutMs: 10_000 })
+    if (r.exitCode === 0 && parseVersion(r.stdout)) return String(parseVersion(r.stdout)?.join('.'))
+  } catch { /* unknown */ }
+  return null
+}
+
+/**
+ * `/todo doctor`: one line per check ("PASS|WARN|FAIL <name> - <detail>", with " Fix: <hint>" on the last two) and a summary.
+ * Read-only: it never writes or deletes anything, and prints names, counts and sizes, never what a file holds.
+ */
+async function doctor($: EngineInterface, ctx: Ctx): Promise<string[]> {
+  const d = ctx.t.doctor
+  const lines: Line[] = []
+  const check = async (name: string, run: () => Promise<Line | Line[]>) => {
+    try { lines.push(...[await run()].flat()) } catch (err) {
+      lines.push({ level: 'WARN', name, detail: reason(err), fix: d.checkFailedFix })
+    }
+  }
+
+  await check('claude-code', async () => {
+    const v = await claudeVersion($)
+    const ok = v === null ? null : versionAtLeast(v, MIN_CLAUDE_CODE)
+    if (v === null || ok === null) return { level: 'WARN', name: 'claude-code', detail: d.versionUnknown(MIN_CLAUDE_CODE), fix: d.versionUnknownFix }
+    return ok
+      ? { level: 'PASS', name: 'claude-code', detail: d.versionOk(v, MIN_CLAUDE_CODE) }
+      : { level: 'WARN', name: 'claude-code', detail: d.versionOld(v, MIN_CLAUDE_CODE), fix: d.versionOldFix }
+  })
+
+  await check('node', async () => {
+    // A cached "missing" may be stale (Node installed after the first probe): probe again, and keep the fresh answer.
+    if (await hasNode($, ctx).catch(() => false) || await hasNode($, ctx, true).catch(() => false)) return { level: 'PASS', name: 'node', detail: d.nodeOk }
+    if (!ctx.cfg.allowSuggestions) return { level: 'PASS', name: 'node', detail: d.nodeOff }
+    return { level: 'WARN', name: 'node', detail: d.nodeMissing, fix: d.nodeMissingFix }
+  })
+
+  const file = await todosPath($, ctx).catch(() => '')
+  let fileExists = false
+  await check('todos-file', async () => {
+    if (!file) return { level: 'FAIL', name: 'todos-file', detail: d.fileNoHome, fix: d.fileNoHomeFix }
+    fileExists = await $.fs.exists(file)
+    if (!fileExists) return { level: 'PASS', name: 'todos-file', detail: d.fileEmpty(file) }
+    try {
+      const list = parseTodosForWrite(await $.fs.read(file))
+      return { level: 'PASS', name: 'todos-file', detail: d.fileOk(file, usableTodos(list).length, list.length) }
+    } catch (err) {
+      return { level: 'FAIL', name: 'todos-file', detail: d.fileBad(file, reason(err)), fix: d.fileBadFix }
+    }
+  })
+
+  await check('todos-folder', async () => {
+    const dir = file ? folderOf(file) : ''
+    if (!dir) return { level: 'PASS', name: 'todos-folder', detail: d.fileNoHome }
+    // The engine has no writable probe, and a test file could be left behind, so only the folder is looked at.
+    const st = await $.fs.stat(dir).catch(() => null)
+    if (!st) return { level: 'PASS', name: 'todos-folder', detail: d.folderNew(dir) }
+    return st.kind === 'dir'
+      ? { level: 'PASS', name: 'todos-folder', detail: d.folderOk(dir) }
+      : { level: 'FAIL', name: 'todos-folder', detail: d.folderNotFolder(dir), fix: d.folderNotFolderFix }
+  })
+
+  await check('lock', async () => {
+    if (!file) return { level: 'PASS', name: 'lock', detail: d.lockNoFile }
+    const lockFile = `${file}.lock`
+    if (!(await $.fs.exists(lockFile))) return { level: 'PASS', name: 'lock', detail: d.lockNone }
+    const state = lockState(await readLock($, lockFile), await $.clock.now(), LOCK_TTL)
+    if (state.state === 'live') return { level: 'PASS', name: 'lock', detail: d.lockLive(Math.ceil(state.msLeft / 1000)) }
+    if (state.state === 'stale') return { level: 'WARN', name: 'lock', detail: d.lockStale(Math.round(state.msAgo / 1000)), fix: d.lockStaleFix }
+    return { level: 'PASS', name: 'lock', detail: d.lockNone }
+  })
+
+  await check('memories', async () => {
+    if (!ctx.cfg.showMemories) return { level: 'PASS', name: 'memories', detail: d.memoriesOff }
+    let cwd = ''
+    try { cwd = await $.session.cwd() } catch { /* below */ }
+    if (!cwd) return { level: 'WARN', name: 'memories', detail: d.memoriesUnknown, fix: d.memoriesUnknownFix }
+    const dirs = await findConfigDirs($, ctx)
+    let found = 0
+    for (const base of dirs) {
+      if (await $.fs.stat(`${base}/projects/${projectSlug(cwd)}/memory/MEMORY.md`).then(() => true, () => false)) found += 1
+    }
+    return { level: 'PASS', name: 'memories', detail: d.memoriesFound(found, dirs.length) }
+  })
+
+  await check('settings', async () => {
+    const off = [
+      ...(ctx.cfg.showBand ? [] : ['showBand']),
+      ...(ctx.cfg.showMemories ? [] : ['showMemories']),
+      ...(ctx.cfg.allowSuggestions ? [] : ['allowSuggestions']),
+    ]
+    return off.length
+      ? { level: 'WARN', name: 'settings', detail: d.settingsOff(off.join(', ')), fix: d.settingsOffFix }
+      : { level: 'PASS', name: 'settings', detail: d.settingsAllOn }
+  })
+
+  await check('language', async () => ({
+    level: 'PASS', name: 'language', detail: d.languageIs(ctx.lang === 'vi' ? 'Tiếng Việt' : 'English', ctx.cfg.language),
+  }))
+
+  const n = countLevels(lines)
+  return [...lines.map(formatLine), d.summary(n.pass, n.warn, n.fail)]
+}
+
 async function runCommand($: EngineInterface, ctx: Ctx, args: string): Promise<{ text: string }> {
   const t = ctx.t
   const usage = t.usage(ctx.cfg.allowSuggestions)
@@ -589,6 +701,10 @@ async function runCommand($: EngineInterface, ctx: Ctx, args: string): Promise<{
     }
     const head = added.length === 1 ? [t.acceptedOne(added[0] ?? '')] : added.length ? [t.acceptedMany(added.length)] : []
     return { text: [...head, ...problems].join('\n') || t.nothingToHandle }
+  }
+  if (verb === 'doctor') {
+    if (tail) return { text: usage }
+    return { text: (await doctor($, ctx)).join('\n') }
   }
   if (verb) return { text: usage }
   await update($, hiddenDay, () => null)

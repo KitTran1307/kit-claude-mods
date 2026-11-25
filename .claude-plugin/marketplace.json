@@ -13,8 +13,8 @@
       "source": {
         "source": "github",
         "repo": "KitTran1307/kit-cloud-pilot",
-        "ref": "v1.5.1",
-        "sha": "407ea2ef31e1a7868c1ec250731357e85dbe87d5"
+        "ref": "v1.7.0",
+        "sha": "581f709c10c4f837903cd976395946dd1ca56838"
       },
       "description": "Let Claude Code (CLI) run work in cloud sessions by itself: start them, track them on GitHub, wait for what they need and answer their questions with a signed reply.",
       "category": "productivity"
@@ -42,6 +42,54 @@
       "source": "./plugins/kit-graphite",
       "description": "A graphite theme for the desktop and mobile apps: charcoal grays, a black accent, a dot field frozen mid-wave with drifting motes, and a pixel comet circling the middle.",
       "category": "productivity"
+    },
+    {
+      "name": "kit-themes",
+      "source": "./plugins/kit-themes",
+      "description": "Three original themes for the desktop and mobile apps: Paper (warm light), High Contrast (WCAG AAA) and Night (low blue light). Auto follows light or dark mode; /themes picks one.",
+      "category": "productivity"
+    },
+    {
+      "name": "kit-turn",
+      "source": "./plugins/kit-turn",
+      "description": "A plain-language summary card at the end of every turn: what changed (files, +/-), tests, how long it took, and a warning with a Push now button when commits are not pushed. Plus a turn clock and /turn changes.",
+      "category": "productivity"
+    },
+    {
+      "name": "kit-agents",
+      "source": "./plugins/kit-agents",
+      "description": "One card per running subagent: name, model, current step, context bar, elapsed time and state, with a waiting one highlighted and a Reply button.",
+      "category": "productivity"
+    },
+    {
+      "name": "quota-coach",
+      "source": "./plugins/quota-coach",
+      "description": "See what is using your plan's limits and what to do about it: one-line saving tips, a why-did-that-cost-so-much card, a pre-send estimate and a daily report by session, model and hour.",
+      "category": "productivity"
+    },
+    {
+      "name": "kit-notify",
+      "source": "./plugins/kit-notify",
+      "description": "A sound and a system notification when Claude finishes or needs you, a queue for prompts you type while it works, and a welcome-back card.",
+      "category": "productivity"
+    },
+    {
+      "name": "kit-pet",
+      "source": "./plugins/kit-pet",
+      "description": "A small original pixel pet above the prompt that reacts to what Claude does, grows as you finish turns and cheers milestones. Three pets to pick from.",
+      "category": "productivity"
+    },
+    {
+      "name": "kit-status",
+      "source": "./plugins/kit-status",
+      "description": "A colored dot on each session in the desktop app sidebar: working, waiting for a background command, waiting for you, or done.",
+      "category": "productivity"
+    },
+    {
+      "name": "kit-safety",
+      "source": "./plugins/kit-safety",
+      "description": "A safety net for risky commands: saves a snapshot before a delete, overwrite or force push, asks you in plain words, restores in one step with /safety restore, and hides well-known API keys and passwords in what Claude reads.",
+      "category": "security"
     }
   ]
 }

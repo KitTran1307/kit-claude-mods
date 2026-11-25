@@ -1,0 +1,43 @@
+{
+  "name": "kit-pet",
+  "displayName": "Pet",
+  "version": "1.0.0",
+  "description": "A small original pixel pet in a band above the prompt: it reacts to what Claude does (working, done, error, low quota), grows as you finish turns, and cheers your first milestones. Three pets, English and Vietnamese, no setup.",
+  "author": {
+    "name": "Kit Tran",
+    "url": "https://github.com/KitTran1307"
+  },
+  "homepage": "https://github.com/KitTran1307/kit-claude-mods/tree/main/plugins/kit-pet",
+  "repository": "https://github.com/KitTran1307/kit-claude-mods",
+  "license": "MIT",
+  "keywords": ["pet", "companion", "achievements", "band", "fun"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "showPet": {
+      "type": "boolean",
+      "title": "Show the pet",
+      "description": "Turn off to hide the pet. Your growth and achievements are still counted.",
+      "default": true
+    },
+    "pet": {
+      "type": "string",
+      "title": "Which pet",
+      "description": "moss: Moss, a leafy moss ball. bun: Bun, a steamed bun with a fold. jelly: Jelly, a little jellyfish. Anything else shows Moss.",
+      "default": "moss",
+      "options": ["moss", "bun", "jelly"]
+    },
+    "achievements": {
+      "type": "boolean",
+      "title": "Achievement toasts",
+      "description": "A short toast for a 7-day streak, 100 finished turns, your first green test run and your first commit, at most one per day. Off: no toasts.",
+      "default": true
+    },
+    "language": {
+      "type": "string",
+      "title": "Language of the band and toasts",
+      "description": "auto: Vietnamese when Claude Code's own language setting is Vietnamese, English otherwise. en: always English. vi: always Vietnamese (Tiếng Việt).",
+      "default": "auto",
+      "options": ["auto", "en", "vi"]
+    }
+  }
+}

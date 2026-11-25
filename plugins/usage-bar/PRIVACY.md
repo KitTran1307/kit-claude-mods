@@ -1,6 +1,6 @@
 # Usage Bar privacy policy
 
-Last updated: 2026-11-16.
+Last updated: 2026-11-24.
 
 Usage Bar is a Claude Code plugin that draws a status band above the prompt box. It runs entirely on your own
 computer, inside Claude Code.
@@ -12,7 +12,9 @@ Only on your computer, only to draw the band:
 - **Claude Code's own session figures** (model, effort, context use, your plan's 5-hour and weekly usage windows),
   through Claude Code's plugin interface.
 - **This session's transcript** (`<config folder>/projects/<project>/<session id>.jsonl`), to find the session title,
-  the account email and failed hooks.
+  the account email and failed hooks, and the time and prompt-cache counters of its last reply, for the cache clock
+  (just a timestamp and whether a one-hour cache was written; the conversation text is not used for it). All of it is
+  read locally and nothing is sent anywhere.
 - **Your local login record** (`.claude.json`), only its `oauthAccount.emailAddress` field, and only when the
   transcript does not name the account.
 - **Your Claude Code settings files** (user and project `settings.json`), only to see whether you already have a
@@ -32,6 +34,11 @@ Only on your computer, only to draw the band:
 Nothing. Usage Bar makes no network requests and sends no data to the author, to Anthropic or to anyone else. The
 optional helper `scripts/session-info.mjs` runs on your computer with Node.js, reads the same transcript and login
 record, and hands its results only to the plugin.
+
+The `/usage-bar doctor` command runs local checks and prints the result on your screen. To do so it executes
+`node --version` and, if Claude Code does not report its own version, `claude --version`; they print a version number
+only, and nothing is sent anywhere. It also checks whether this session's transcript can be read. It never prints your
+email, tokens or file contents.
 
 ## What it shows
 

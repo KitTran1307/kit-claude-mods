@@ -16,6 +16,16 @@ export type Info = {
   title: string
   /** Hook failures this session; absent in a value stored by an older version. */
   hookErrors?: HookErrors
+  /** Last main-thread reply: when it was written and how long its prompt cache lives; absent when unknown or in a value stored by an older version. */
+  cache?: { at: number; ttlMs: number } | null
+  /** When a measurement last carried rate limits (ms); absent when unknown or in a value stored by an older version. */
+  limitsAt?: number | null
+  /** When the main thread last ran a turn step or finished a turn (ms); absent when none ran this session. */
+  turnAt?: number | null
+  /** Whether the 1 s timer runs (the cache clock counts seconds); absent or false: the 60 s tick (whole minutes). */
+  fastClock?: boolean
+  /** Whether the main thread is in the middle of a turn (the cache clock is hidden meanwhile); absent or false: not. */
+  busy?: boolean
 }
 
 declare module 'claude-code' {

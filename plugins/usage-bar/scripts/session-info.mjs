@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Optional helper of the usage-bar plugin, for what the plugin cannot read by itself: a session transcript or a
 // login record over 4 MB. Plain Node, no dependencies; Windows, macOS and Linux. Prints one JSON object:
-//   {"title","transcriptEmail","loginEmail","email","transcript","hookErrors"}   (a missing value is "")
+//   {"title","transcriptEmail","loginEmail","email","transcript","hookErrors","cacheStamp"}   (a missing value is "")
 //
 //   node session-info.mjs --transcript FILE [--tail-mb N] [--login-file FILE]
 //   node session-info.mjs --session ID [--cwd DIR] [--config-dir DIR] [--tail-mb N] [--login-file FILE]
@@ -14,6 +14,8 @@
 // email: transcriptEmail, else loginEmail.
 // hookErrors: {"count","last"}, the hook failures (hook_non_blocking_error / hook_blocking_error entries) in the same
 //   window; last is null or {"hook","command","reason"}. Same rules as hookErrors() in hooks/transcript.ts.
+// cacheStamp: null or {"at","ttlMs"}, the last main-thread reply's time (ms) and prompt-cache life; same rules as lastCacheStamp()
+//   in hooks/transcript.ts (the life is the last cache writer's, so a read-only reply keeps it).
 // --session finds the transcript at <config dir>/projects/<project>/<ID>.jsonl; the config dir is --config-dir,
 //   else CLAUDE_CONFIG_DIR, else <home>/.claude. With --cwd the project folder is tried first, then every folder.
 // The title and email rules are the same as hooks/transcript.ts.
@@ -110,7 +112,8 @@ const record = (v) => (v !== null && typeof v === "object" ? v : null);
 
 // One line of at most `room` characters, cut with an ellipsis.
 function fitText(value, room) {
-  const chars = [...value.replace(/\s+/g, " ").trim()];
+  // Control characters (ESC, BEL...) never reach the screen: same rule as fitText() in hooks/format.ts.
+  const chars = [...value.replace(/\s+/g, " ").replace(/[\u0000-\u001F\u007F-\u009F]/g, "").replace(/\s+/g, " ").trim()];
   if (room < 4) return "";
   return chars.length <= room ? chars.join("") : `${chars.slice(0, room - 1).join("")}…`;
 }
@@ -124,7 +127,7 @@ function hookFailure(att) {
   const lines = raw.replace(/^Failed with non-blocking status code:\s*/i, "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const firstLine = lines.find((l) => CAUSE.test(l)) ?? lines[0] ?? "";
   return {
-    hook: str(att.hookName) || str(att.hookEvent) || str(att.hook_event_name),
+    hook: fitText(str(att.hookName) || str(att.hookEvent) || str(att.hook_event_name), 40),
     command: fitText(str(att.command) || str(nested?.command), 60),
     reason: fitText(firstLine.replace(/^Failed with non-blocking status code:\s*/i, ""), 80),
   };
@@ -156,6 +159,49 @@ function hookErrors(text) {
     }
   }
   return { count, last };
+}
+
+// ---- prompt-cache stamp (same rules as lastCacheStamp() in hooks/transcript.ts) ----
+// The last main-thread reply's timestamp; its cache life is the one the most recent reply that WROTE cache set
+// (1 hour for 1-hour tokens, 5 minutes for only 5-minute ones), so a read-only reply keeps it; 5 minutes when there
+// is no writer. null when there is no reply or a field is missing from the last one.
+function writerTtl(message) {
+  const created = record(record(message?.usage)?.cache_creation);
+  const hour = created?.ephemeral_1h_input_tokens;
+  const five = created?.ephemeral_5m_input_tokens;
+  if (typeof hour === "number" && hour > 0) return 3_600_000;
+  if (typeof five === "number" && five > 0) return 300_000;
+  return null;
+}
+
+function cacheStamp(text) {
+  const key = '"type":"assistant"';
+  let at = text.lastIndexOf(key);
+  let stampAt = null;
+  for (let tries = 0; at >= 0 && tries < 50; tries += 1) {
+    const start = text.lastIndexOf("\n", at) + 1;
+    const end = text.indexOf("\n", at);
+    const entry = parseObject(text.slice(start, end < 0 ? undefined : end));
+    if (entry && entry.type === "assistant" && entry.isSidechain !== true) {
+      const message = record(entry.message);
+      if (message?.model !== "<synthetic>") {
+        if (stampAt === null) {
+          const stamp = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
+          const created = record(record(message?.usage)?.cache_creation)?.ephemeral_1h_input_tokens;
+          if (!Number.isFinite(stamp) || typeof created !== "number" || !Number.isFinite(created)) return null;
+          const ttlMs = writerTtl(message);
+          if (ttlMs !== null) return { at: stamp, ttlMs };
+          stampAt = stamp;
+        } else {
+          const ttlMs = writerTtl(message);
+          if (ttlMs !== null) return { at: stampAt, ttlMs };
+        }
+      }
+    }
+    if (start === 0) break;
+    at = text.lastIndexOf(key, start - 1);
+  }
+  return stampAt === null ? null : { at: stampAt, ttlMs: 300_000 };
 }
 
 function loginEmail(file) {
@@ -215,5 +261,6 @@ process.stdout.write(
     email: fromTranscript || fromLogin,
     transcript,
     hookErrors: hookErrors(text),
+    cacheStamp: cacheStamp(text),
   }),
 );

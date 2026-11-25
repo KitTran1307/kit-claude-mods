@@ -1,0 +1,63 @@
+{
+  "name": "kit-turn",
+  "displayName": "Turn Card",
+  "version": "1.0.0",
+  "description": "A plain-language summary card at the end of every turn: what Claude did, the files it changed (+/- per file), tests that ran, how long it took, and a warning with a one-press prompt when commits are not pushed. Choose a card or a timeline. Also a live turn clock, a /turn command and a Vietnamese interface.",
+  "author": {
+    "name": "Kit Tran",
+    "url": "https://github.com/KitTran1307"
+  },
+  "homepage": "https://github.com/KitTran1307/kit-claude-mods/tree/main/plugins/kit-turn",
+  "repository": "https://github.com/KitTran1307/kit-claude-mods",
+  "license": "MIT",
+  "keywords": [
+    "summary",
+    "turn",
+    "changes",
+    "git",
+    "tests",
+    "band"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "style": {
+      "type": "string",
+      "title": "Style of the summary",
+      "description": "card: a card with sections (Done, Changes, Checks, Time). timeline: one line per step with the clock time, then the result. Both collapse to one line when there is little room.",
+      "default": "card",
+      "options": [
+        "card",
+        "timeline"
+      ]
+    },
+    "showClock": {
+      "type": "boolean",
+      "title": "Show the turn clock while Claude works",
+      "description": "While a turn runs, show when it started and how long it has been going, in the band and the status line. Off: no clock.",
+      "default": true
+    },
+    "showBand": {
+      "type": "boolean",
+      "title": "Show the summary above the prompt",
+      "description": "Turn off to hide the band. The /turn command and the pane keep working.",
+      "default": true
+    },
+    "language": {
+      "type": "string",
+      "title": "Language of the card, pane and /turn",
+      "description": "auto: Vietnamese when Claude Code's own language setting is Vietnamese, English otherwise (looked up once at session start). en: always English. vi: always Vietnamese (Tiếng Việt). The prompt that Push now sends to Claude stays English.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "en",
+        "vi"
+      ]
+    },
+    "maxFiles": {
+      "type": "number",
+      "title": "Files listed in the card",
+      "description": "How many changed files the card lists before \"+N more\". Whole number from 1 to 30; a value outside that range is cut to it.",
+      "default": 8
+    }
+  }
+}

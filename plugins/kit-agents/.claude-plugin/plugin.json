@@ -1,0 +1,52 @@
+{
+  "name": "kit-agents",
+  "displayName": "Agent Board",
+  "version": "1.0.0",
+  "description": "A live board of your running subagents: one card each with its name, model, current task, how full its context is and how long it has run. A subagent that is waiting is highlighted with a Reply button that opens its conversation. It sits in a pane beside the chat in a wide terminal, or in a band above the prompt anywhere else, with a /board command and a Vietnamese interface.",
+  "author": {
+    "name": "Kit Tran",
+    "url": "https://github.com/KitTran1307"
+  },
+  "homepage": "https://github.com/KitTran1307/kit-claude-mods/tree/main/plugins/kit-agents",
+  "repository": "https://github.com/KitTran1307/kit-claude-mods",
+  "license": "MIT",
+  "keywords": [
+    "subagents",
+    "agents",
+    "board",
+    "band",
+    "pane"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "showBand": {
+      "type": "boolean",
+      "title": "Show the board above the prompt",
+      "description": "Turn off to hide the band. The pane, the /board command and the buttons in them keep working.",
+      "default": true
+    },
+    "usePane": {
+      "type": "boolean",
+      "title": "Open the pane in a wide terminal",
+      "description": "On: in a wide terminal the board opens by itself in a pane beside the chat while subagents run, and the band steps aside. Closing the pane by hand keeps it closed until the subagents are done. Off: the band is always used. Other surfaces always use the band.",
+      "default": true
+    },
+    "maxCards": {
+      "type": "number",
+      "title": "Most subagents to show",
+      "description": "Whole number from 1 to 12; a value outside that range is cut to it. The rest are counted on a \"+N more\" line.",
+      "default": 4
+    },
+    "language": {
+      "type": "string",
+      "title": "Language of the board and /board",
+      "description": "auto: Vietnamese when Claude Code's own language setting is Vietnamese, English otherwise (looked up once at session start). en: always English. vi: always Vietnamese (Tiếng Việt).",
+      "default": "auto",
+      "options": [
+        "auto",
+        "en",
+        "vi"
+      ]
+    }
+  }
+}

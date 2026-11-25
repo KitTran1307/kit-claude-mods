@@ -1,0 +1,76 @@
+{
+  "name": "kit-safety",
+  "displayName": "Safety Net",
+  "version": "1.0.0",
+  "description": "A safety net for risky commands: saves a snapshot of what a command would delete or overwrite, asks you in plain language before it runs, restores everything in one step with /safety restore, and hides well-known API keys and passwords in what Claude reads.",
+  "author": {
+    "name": "Kit Tran",
+    "url": "https://github.com/KitTran1307"
+  },
+  "homepage": "https://github.com/KitTran1307/kit-claude-mods/tree/main/plugins/kit-safety",
+  "repository": "https://github.com/KitTran1307/kit-claude-mods",
+  "license": "MIT",
+  "keywords": [
+    "safety",
+    "backup",
+    "undo",
+    "restore",
+    "secrets",
+    "band"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "confirm": {
+      "type": "string",
+      "title": "When to ask before a risky action",
+      "description": "risky: ask in plain words before a command that deletes, overwrites or rewrites history (rm -r, git push --force, git reset --hard, ...) or before overwriting a .env file; edits to other files Git does not track are only saved quietly. always: also ask before overwriting any file Git does not track. never: never ask. Every choice still saves a snapshot first (except when cleaning up something large that can be rebuilt).",
+      "default": "risky",
+      "options": [
+        "risky",
+        "always",
+        "never"
+      ]
+    },
+    "maskSecrets": {
+      "type": "boolean",
+      "title": "Mask secrets in tool output",
+      "description": "Replace well-known key shapes (Anthropic, OpenAI, GitHub, AWS and Stripe keys, private keys, JWTs, passwords in URLs) with sk-ant-•••• masked in what Claude reads, in the stored message and on your screen. Only well-known shapes are recognised. Turn off to see and store output unchanged.",
+      "default": true
+    },
+    "keepSnapshots": {
+      "type": "number",
+      "title": "Snapshots to keep per project",
+      "description": "The newest snapshots kept for each project (quiet saves of edited files and the ones you were asked about count together; quiet ones go first); older ones are deleted. Whole number from 1 to 200; a value outside that range is cut to it.",
+      "default": 20
+    },
+    "keepDays": {
+      "type": "number",
+      "title": "Days to keep a snapshot",
+      "description": "A snapshot older than this is deleted, in every project, when a session starts. Whole number from 1 to 90; a value outside that range is cut to it.",
+      "default": 7
+    },
+    "maxSizeMB": {
+      "type": "number",
+      "title": "Largest snapshot (MB)",
+      "description": "A call that would touch more than this (or more than 50,000 files) is not snapshotted; the confirmation says so and still asks. Whole number from 10 to 2000; a value outside that range is cut to it.",
+      "default": 200
+    },
+    "maxTotalMB": {
+      "type": "number",
+      "title": "Largest total of all snapshots (MB)",
+      "description": "All snapshots of all projects together may take this much disk space; the oldest are deleted first when a session starts. Whole number from 100 to 20000; a value outside that range is cut to it.",
+      "default": 2048
+    },
+    "language": {
+      "type": "string",
+      "title": "Language of the band and /safety",
+      "description": "auto: Vietnamese when Claude Code's own language setting is Vietnamese, English otherwise (looked up once at session start). en: always English. vi: always Vietnamese (Tiếng Việt). What Claude itself reads stays English.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "en",
+        "vi"
+      ]
+    }
+  }
+}

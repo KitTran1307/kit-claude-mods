@@ -1,5 +1,136 @@
 # Changelog
 
+## kit-cloud 2.8.0, usage-bar 2.1.0, kit-todos 1.7.0, kit-graphite 1.3.0, kit-safety 1.0.0, kit-status 1.0.0, quota-coach 1.0.0, kit-notify 1.0.0, kit-pet 1.0.0, kit-themes 1.0.0, kit-turn 1.0.0, kit-agents 1.0.0
+
+Nine new plugins and updates to the four existing ones.
+
+### kit-safety 1.0.0
+
+- **New: kit-safety ("Safety Net").** Before a risky command (`rm -r`, `git push --force`, `git reset --hard`,
+  `git clean -f`, `git checkout -- .`, `git branch -D`, dropping a database or table) or an edit that overwrites a `.env`
+  file, it saves a snapshot of what would be lost, then asks in plain words in a band above the prompt: **Waiting for you:
+  About to delete the folder "data/" · Snapshot saved #7 · Allow / Cancel**. Overwriting other files Git does not track
+  is saved quietly, once per file per session. **`/safety list`**, **`/safety restore [n]`** and **`/safety undo`** put it
+  back in one step ("Restored 14 files to 14:05"); Git snapshots are offered as an exact command, never run silently.
+  Well-known key shapes (Anthropic, OpenAI, GitHub, AWS and Stripe keys, private keys, JWTs, passwords in URLs) are
+  masked, with password-like settings (`DB_PASSWORD=...`, `"token": "..."`), in tool output as `sk-ant-•••• masked` in
+  what Claude reads and on your screen. Option `confirm` (`risky`, `always`,
+  `never`; `never` still snapshots). Snapshots live under the Claude config folder, newest 20 per project for 7 days, with
+  Node.js binary files too and without it text files up to 3 MB. English and Vietnamese; `/safety doctor` checks what it needs.
+- **Safe by default.** `git` and `node` always start from Safety Net's own folder, never your project (on Windows a `git.exe`
+  inside a repository could otherwise run). Deleting a whole project says in yellow that its `.git` (unpushed commits,
+  local branches, stashes) is not part of the snapshot. `/safety restore` never overwrites a file it could not save first:
+  it restores only what is missing and says what it left alone; when nothing was overwritten it says there is no undo point
+  to take restored files away. A file with a name that cannot be saved safely is asked about, never let through.
+
+### kit-status 1.0.0
+
+- **New: Status Dot (`kit-status`).** A colored dot at the start of each session name in the desktop app sidebar: 🔵 working,
+  ⏳ waiting for a background command or agent, 🟠 waiting for your answer, ✅ done. It renames the session through the app's
+  own session tools, does nothing outside the desktop app, and stops instead of asking when a rename would need approval.
+
+### quota-coach 1.0.0
+
+- **New: Quota Coach (`quota-coach`).** Tells you what is using your plan's limits and what to do about it. A one-line tip
+  above the prompt when a saving is available (a full context: `/compact`; many subagents; a cold prompt cache before a big
+  context; a strong model on light work), with a button where Claude Code can do it for you and never acting by itself.
+  `/quota why` (or the tip's Why? button) explains the last turn's cost: context, model, subagents, cache. While you type,
+  a pre-send estimate (`This turn ~3% of 5H (2-4%)`) once it has learnt your rate from a few turns. `/quota report` is a
+  daily report by session, model and hour, in a side pane where the terminal has room, from your local transcripts and its
+  own per-day totals. Plans without a 5-hour window, API keys and third-party providers see tokens only, never an error.
+  No model calls, no network. Vietnamese and English.
+
+### kit-notify 1.0.0
+
+- **New: Notify (`kit-notify`).** A sound and a system notification when Claude finishes a turn that ran at least `notifyAfterSec`
+  seconds (20 by default) and when it needs you (a permission prompt or a question), with two original sounds, quiet hours and
+  nothing while you are typing. A queue for prompts typed while Claude works: a numbered list above the prompt with a **×** on each,
+  **Send the first now**, **Pause**, **Clear all** and **Queue what I typed**, plus `/queue add|list|remove|clear|pause|resume|next`; the next
+  one is sent when Claude is free, you are not typing and no permission prompt is open, and stopping Claude pauses it. A welcome-back
+  card ("While you were away 25 min: 2 tasks done, 1 question waiting") after `awayMin` minutes away. Works with the engine's
+  own audio on macOS and the system's player on Windows and Linux, and does nothing quietly where none exists. English and Vietnamese.
+
+### kit-pet 1.0.0
+
+- **New: Pet.** A small original pixel pet above the prompt, in three kinds (Moss, Bun, Jelly). It reacts to what Claude does (working, done, error, low limit), grows in three stages as you finish turns and shows an achievement toast for a few first milestones, at most one a day. See [plugins/kit-pet](plugins/kit-pet).
+
+### kit-themes 1.0.0
+
+- **New: Themes (`kit-themes`).** Three original themes for the Claude desktop and mobile apps. Paper is warm light paper,
+  High Contrast is black and white with a yellow accent and reaches WCAG AAA (7:1) on its text and status colors, Night is a dark
+  low-blue-light palette in warm browns and amber. By default it is on auto: Paper in light mode, Night in dark mode, so
+  installing it already shows a theme. `/themes paper|contrast|night|auto|off` picks another or turns it off, and the
+  choice is remembered. Nothing animates. In a terminal `/themes` says that nothing is drawn there. Vietnamese and English.
+
+### kit-turn 1.0.0, kit-agents 1.0.0
+
+- New: **kit-turn** (Turn Card), a plain-language summary at the end of each turn (card or timeline style), a turn clock and `/turn changes`.
+- New: **kit-agents** (Agent Board), one card per running subagent with model, step, context bar, time and state.
+
+### kit-cloud 2.8.0, usage-bar 2.1.0, kit-todos 1.7.0, kit-graphite 1.3.0
+
+- kit-cloud 2.8.0 uses kit-cloud-pilot 1.7.0 (phone alerts, CI-failure and conflict self-handling, `nudge`).
+
+#### usage-bar 2.1.0
+
+- **Cache clock.** After the context meter, `◷ cache 4:07` counts down how long Claude's prompt cache for this session
+  stays warm (green; yellow and bold in the last minute). When it runs out it says `◷ cache cold` in red. It is hidden
+  before the first reply and whenever the transcript does not say. Turn it off with `showCacheClock`.
+- **5-hour forecast.** `→ 72%` after the 5H percentage is where the window ends at your current pace, shown once a tenth
+  of the window has passed (yellow from 80%, red from 100%). Turn it off with `showForecast`.
+- **Old numbers are marked.** When the limits have not refreshed for over 5 minutes the row is dimmed and ends with
+  `⟳ old 6m`.
+- **Easier to read.** Four colors are a little lighter (secondary text, red, and the model and effort pills) so the text
+  meets WCAG contrast.
+- **`/usage-bar doctor`** checks Claude Code's version, Node, the transcript, the settings that hide the band and the
+  rate-limit data, one line each.
+
+#### kit-cloud 2.8.0
+
+- **`/cloud nudge <n|id> [text]`** tells a cloud session to carry on, **`/cloud questions`** lists the open questions
+  on this repo's tracked pull requests and **`/cloud reply <n> <text>`** answers one. They need kit-cloud-pilot 1.7.0;
+  with an older one they say so and everything else keeps working.
+- **`/cloud doctor`** now prints one line per check (PASS, WARN or FAIL, with a fix): kit-cloud-pilot, node, gh and its
+  sign-in, Claude Code, the hub's files, stale lock files and the settings that hide the band.
+
+#### kit-todos 1.7.0
+
+- **`/todo doctor`** checks Claude Code's version, Node, the todos file and folder, the lock file, the memories and the
+  settings that hide the band.
+
+#### kit-graphite 1.3.0
+
+- **`/graphite off`, `/graphite on`, `/graphite status`.** Off draws Claude's default look; the choice is remembered
+  across sessions. **`/graphite doctor`** checks Claude Code's version, the theme and the optional terminal files.
+
+#### All four
+
+- Each plugin now has a `displayName`, and the repository checks the colors' contrast (`scripts/contrast.mjs`).
+
+## kit-cloud 2.7.2
+
+- Uses kit-cloud-pilot 1.6.1: answers also wake cloud sessions started from the desktop app, the web or a plain
+  `claude --cloud`, with one account or several and with Remote Control on or off.
+
+## kit-cloud 2.7.1
+
+- **Answers reach a cloud session that stopped looking.** Uses kit-cloud-pilot 1.6.0: when Claude answers a cloud
+  session's question, the session that asked is told to read the answer now, even when its turn had ended. Before, an
+  answer could sit unread on the pull request for hours while the session looked stuck.
+
+## kit-cloud 2.7.0
+
+- **A clearer band, in Claude Code's own style.** Folded, the band names the repo and puts a colored dot before each
+  count (orange for what needs you). Open, the sessions hang under the band as a tree, the way a tool's output hangs
+  under its call: `⎿` before the first group, `├` `└` before each session, then its mark, task, status, age and an
+  `Open ↗` link. The repo (and account) appear on each session only when the band spans several.
+- **Finished sessions are listed** while there is room; on a short terminal they fold into one line first, and what
+  still does not fit becomes "n more: type /cloud". The band never takes more rows than Claude Code gives it.
+- **`/cloud` reads the same way:** grouped (Needs you, Working, In review, Finished) with a count each, one line per
+  session and a dim line under it with its id and link.
+- One-cell marks only (`◌` for silent instead of `⚠`, which some terminals draw as a wide emoji), so the columns stay in
+  line everywhere. Links are drawn only when they hold no control characters.
+
 ## kit-cloud 2.6.0
 
 - **The band says when an account cannot use the cloud.** When cloud-pilot sets your account aside (a session it

@@ -5,9 +5,9 @@ import type { Limit } from '../types'
 
 // Tokyo Night.
 export const T = {
-  dark: '#16161e', hl: '#292e42', hl2: '#3b4261', comment: '#565f89', fg: '#c0caf5',
-  blue: '#7aa2f7', cyan: '#7dcfff', magenta: '#bb9af7', orange: '#ff9e64',
-  yellow: '#e0af68', green: '#9ece6a', teal: '#73daca', red: '#f7768e',
+  dark: '#16161e', hl: '#292e42', hl2: '#3b4261', comment: '#8a93bd', fg: '#c0caf5',
+  blue: '#7aa2f7', cyan: '#a6e3ff', magenta: '#d4bcff', orange: '#ff9e64',
+  yellow: '#e0af68', green: '#9ece6a', teal: '#73daca', red: '#ffa3b5',
 } as const
 
 // Slot 0 is the default account (orange); the others are picked by a hash of the account label.
@@ -82,10 +82,86 @@ export function toLimit(limits: readonly SessionRateLimit[], kind: string): Limi
   return { pct: Math.round(hit.percentUsed), resetsAt: Number.isFinite(resetsAt) ? resetsAt : null }
 }
 
+/** One line of plain text: whitespace collapsed, every C0/C1 control character (ESC, BEL...) removed. */
+export function cleanText(text: string): string {
+  return text.replace(/\s+/g, ' ').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').replace(/\s+/g, ' ').trim()
+}
+
 // One line of at most `room` cells, cut with an ellipsis; too little room is no text at all.
 export function fitText(text: string, room: number): string {
   // Control characters (ESC, OSC...) never reach the screen: a hook's stderr or a title cannot drive the terminal.
-  const chars = [...text.replace(/\s+/g, ' ').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim()]
+  const chars = [...cleanText(text)]
   if (Number.isNaN(room) || room < 4) return ''
   return chars.length <= room ? chars.join('') : `${chars.slice(0, room - 1).join('')}…`
+}
+
+// ---------- prompt-cache clock ----------
+/** The last main-thread reply of the session: when it was written, and how long the prompt cache it touched lives. */
+export type CacheStamp = { at: number; ttlMs: number }
+export const CACHE_TTL_5M_MS = 300_000
+export const CACHE_TTL_1H_MS = 3_600_000
+const CACHE_LOW_MS = 60_000
+/** A reply stamped further ahead than this (clock skew) is not believed. */
+const CACHE_SKEW_MS = 60_000
+
+export type CacheClock = {
+  state: 'warm' | 'low' | 'cold'
+  /** The time left as `4:07` (seconds) or `4m` / `<1m` (minutes); '' once cold. */
+  value: string
+}
+
+/**
+ * The cache clock for the band. null: nothing to show (no reply yet, a stamp that is missing, not a number or in
+ * the future). `tickMs` is how often the band redraws: whole seconds only when it is a second or less, otherwise
+ * whole minutes (the redraw would be stale in between). `busy` (a turn is running) hides the clock.
+ */
+export function cacheClock(stamp: CacheStamp | null | undefined, nowMs: number, tickMs: number, busy = false): CacheClock | null {
+  // The main thread is in the middle of a turn: it touches the cache at every step, so the last reply's stamp says nothing.
+  if (busy) return null
+  if (!stamp || !Number.isFinite(stamp.at) || !Number.isFinite(stamp.ttlMs) || stamp.ttlMs <= 0 || !Number.isFinite(nowMs)) return null
+  if (stamp.at - nowMs > CACHE_SKEW_MS) return null
+  const left = Math.min(stamp.ttlMs, stamp.at + stamp.ttlMs - nowMs)
+  if (left <= 0) return { state: 'cold', value: '' }
+  const state = left < CACHE_LOW_MS ? 'low' : 'warm'
+  if (tickMs <= 1000) {
+    const s = Math.ceil(left / 1000)
+    return { state, value: `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
+  }
+  return { state, value: left < CACHE_LOW_MS ? '<1m' : `${Math.floor(left / 60_000)}m` }
+}
+
+// ---------- 5-hour forecast ----------
+export const FIVE_HOUR_MS = 18_000_000
+export const FORECAST_MAX = 999
+
+/**
+ * Where the 5-hour window ends at the current pace: pct / the share of the window gone. null while it is too early
+ * to say (under 10% of the window), when nothing is used yet, or when a number is missing or makes no sense.
+ */
+export function forecastPct(pct: number | null, resetsAt: number | null, nowMs: number): number | null {
+  if (pct == null || resetsAt == null || !Number.isFinite(pct) || !Number.isFinite(resetsAt) || !Number.isFinite(nowMs) || pct <= 0) return null
+  const elapsed = FIVE_HOUR_MS - (resetsAt - nowMs)
+  if (elapsed * 10 < FIVE_HOUR_MS || elapsed > FIVE_HOUR_MS) return null
+  return Math.min(FORECAST_MAX, Math.round((pct * FIVE_HOUR_MS) / elapsed))
+}
+
+export function forecastStyle(n: number): { color: string; bold: boolean } {
+  if (n >= 100) return { color: T.red, bold: true }
+  if (n >= 80) return { color: T.yellow, bold: false }
+  return { color: T.comment, bold: false }
+}
+
+// ---------- stale limits ----------
+export const STALE_AFTER_MS = 300_000
+
+/**
+ * Whole minutes since the limits last refreshed, when they are stale: more than 5 minutes old AND a main-thread turn
+ * ran after that refresh (`turnAt`). A person who is only idle does not make them stale, since nothing moved; an
+ * unknown or earlier turn time is not stale either. null: fresh, idle or not known.
+ */
+export function staleMinutes(measuredAt: number | null | undefined, turnAt: number | null | undefined, nowMs: number): number | null {
+  if (measuredAt == null || !Number.isFinite(measuredAt) || !Number.isFinite(nowMs)) return null
+  if (turnAt == null || !Number.isFinite(turnAt) || turnAt <= measuredAt) return null
+  const age = nowMs - measuredAt
+  return age > STALE_AFTER_MS ? Math.floor(age / 60_000) : null
 }

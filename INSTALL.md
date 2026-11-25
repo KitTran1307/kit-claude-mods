@@ -2,7 +2,8 @@
 
 These steps are written for Claude Code to follow when a person asks it to install one or more of these plugins.
 A person can follow them too. Install only the plugins the person asked for; if they said "all", that is
-`kit-cloud`, `usage-bar`, `kit-todos` and `kit-graphite`.
+`kit-cloud`, `usage-bar`, `kit-todos`, `kit-graphite`, `kit-themes`, `kit-turn`, `kit-agents`, `quota-coach`,
+`kit-notify`, `kit-pet`, `kit-safety` and `kit-status`.
 
 ## 0. Let the person choose
 
@@ -14,8 +15,23 @@ pick several (in Claude Code, a multiple-choice question with several answers al
 - **usage-bar** (Usage Bar): your 5-hour and weekly limits, context and model at a glance, also in the desktop app.
   Needs nothing.
 - **kit-todos**: your project's to-dos above the prompt, and tasks Claude suggests for you to approve. Needs nothing; Claude's suggestions need Node 18+.
+- **kit-turn** (Turn Card): a plain-language summary at the end of every turn (files changed, tests, time, unpushed commits). Needs Claude Code 2.1.330 or later; uses git when the folder is a repository.
+- **kit-agents** (Agent Board): one card per running subagent with model, step, context and time. Needs Claude Code 2.1.330 or later.
 - **kit-graphite**: a graphite theme for the desktop and mobile apps (the terminal keeps its look). Needs Claude
-  Code 2.1.323 or later.
+  Code 2.1.326 or later.
+- **kit-pet** (Pet): a small pixel pet above the prompt that works, cheers or droops with what Claude does, grows
+  as you finish turns and congratulates you on a few milestones. Needs nothing.
+- **kit-themes** (Themes): Paper, High Contrast and Night themes for the desktop and mobile apps. Needs Claude Code
+  2.1.323 or later.
+- **quota-coach** (Quota Coach): what is using your plan's limits and what to do about it: tips, a cost card, a
+  pre-send estimate and a daily report. Needs nothing.
+- **kit-notify** (Notify): a sound and a notification when Claude finishes or needs you, and a queue for prompts typed
+  while it works. Needs nothing.
+- **kit-safety** (Safety Net): a snapshot before risky commands (`rm -rf`, force push, `git reset --hard`, overwriting
+  a `.env`), a plain-language question, `/safety restore`, and API keys masked in tool output. Needs nothing; Node 18+
+  also saves binary files.
+- **kit-status** (Status Dot): a colored dot on each session in the desktop app's sidebar. Only does something in the
+  desktop app.
 
 Install only what they pick. If they pick none, install nothing and stop.
 
