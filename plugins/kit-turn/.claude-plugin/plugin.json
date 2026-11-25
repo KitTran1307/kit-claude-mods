@@ -1,7 +1,7 @@
 {
   "name": "kit-turn",
   "displayName": "Turn Card",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A plain-language summary card at the end of every turn: what Claude did, the files it changed (+/- per file), tests that ran, how long it took, and a warning with a one-press prompt when commits are not pushed. Choose a card or a timeline. Also a live turn clock, a /turn command and a Vietnamese interface.",
   "author": {
     "name": "Kit Tran",

@@ -4,7 +4,7 @@ import { TABLES } from './i18n'
 
 const at = (h: number, m: number, s = 0) => new Date(2026, 10, 25, h, m, s).getTime()
 const T0 = at(14, 2)
-const ROOT = 'D:/work/acme-shop'
+const ROOT = '/work/acme-shop'
 
 const BAND = (over: Record<string, unknown> = {}) => ({
   plugin: 'kit-turn',

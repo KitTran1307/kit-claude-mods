@@ -1,5 +1,9 @@
 # Changelog
 
+## kit-turn 1.0.1
+
+- kit-turn's own tests now pass on Linux and macOS too (a test used a Windows-only folder path). Nothing changes in the plugin itself.
+
 ## kit-cloud 2.8.0, usage-bar 2.1.0, kit-todos 1.7.0, kit-graphite 1.3.0, kit-safety 1.0.0, kit-status 1.0.0, quota-coach 1.0.0, kit-notify 1.0.0, kit-pet 1.0.0, kit-themes 1.0.0, kit-turn 1.0.0, kit-agents 1.0.0
 
 Nine new plugins and updates to the four existing ones.
