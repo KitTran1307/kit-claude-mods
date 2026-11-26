@@ -1,5 +1,18 @@
 # Changelog
 
+## kit-cloud-pilot 1.9.0
+
+The marketplace now installs kit-cloud-pilot 1.9.0 (was 1.7.0). Full notes: the
+[kit-cloud-pilot releases](https://github.com/KitTran1307/kit-cloud-pilot/releases).
+
+- **1.9.0: `start --environment <env_id>` runs a session in the cloud environment you name**, instead of the
+  account's default one, which may belong to another project and carry its variables. Claude prefers the cloud for
+  work that would load your machine (long builds, test suites, browsers), and a config folder that never ran `claude`
+  fails at once with what to do instead of waiting for a timeout.
+- **1.8.1 and 1.8.0: a question from a cloud session always reaches someone**: unanswered questions are told again,
+  sessions started from the desktop app or the web wake the session watching the repository, and messages to desktop
+  app sessions also try your other Claude config folders.
+
 ## kit-turn 1.0.1
 
 - kit-turn's own tests now pass on Linux and macOS too (a test used a Windows-only folder path). Nothing changes in the plugin itself.
