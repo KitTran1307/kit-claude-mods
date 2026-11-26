@@ -114,8 +114,11 @@ No plugin sends data to any other service, and none collects telemetry. Details 
 
 ## Feedback
 
+If a mod saves you time, a ⭐ on this repository helps other Claude Code users find it.
+
 To report a bug or suggest an idea, open an [issue](https://github.com/KitTran1307/kit-claude-mods/issues/new/choose)
-(a form guides you). This repository only publishes releases, so pull requests are closed automatically; please
+(a form guides you). Questions, and screenshots of your setup, are welcome in
+[Discussions](https://github.com/KitTran1307/kit-claude-mods/discussions). This repository only publishes releases, so pull requests are closed automatically; please
 open an issue instead. For security problems, follow [SECURITY.md](SECURITY.md) and do not open a public issue.
 
 ## Development

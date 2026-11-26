@@ -1,12 +1,12 @@
 name: Bug report
-description: Something in kit-cloud, usage-bar or kit-todos does not work as described.
+description: Something in one of the plugins does not work as described.
 labels: [bug]
 body:
   - type: dropdown
     id: plugin
     attributes:
       label: Plugin
-      options: [kit-cloud, usage-bar, kit-todos, installing or updating, not sure]
+      options: [usage-bar, kit-cloud, kit-todos, kit-turn, kit-agents, kit-safety, kit-notify, quota-coach, kit-pet, kit-status, kit-graphite, kit-themes, installing or updating, not sure]
     validations:
       required: true
   - type: textarea

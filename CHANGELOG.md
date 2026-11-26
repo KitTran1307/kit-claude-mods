@@ -1,5 +1,11 @@
 # Changelog
 
+## kit-cloud-pilot 1.9.1, feedback forms
+
+- **Easier to report a problem, suggest an idea or ask a question:** a form for ideas next to the bug form (which now
+  lists every plugin), and a link to the new Discussions for questions and setups.
+- The marketplace now installs kit-cloud-pilot 1.9.1 (was 1.9.0), which adds the same forms. Nothing changes in the plugins themselves.
+
 ## kit-cloud-pilot 1.9.0
 
 The marketplace now installs kit-cloud-pilot 1.9.0 (was 1.7.0). Full notes: the
