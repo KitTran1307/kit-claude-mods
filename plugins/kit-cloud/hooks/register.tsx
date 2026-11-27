@@ -182,7 +182,7 @@ async function refresh($: EngineInterface, timer = false): Promise<void> {
     const note = waiterNote(file.rows, sid, file.waiting, file.queued, t)
     // With wakeSession this plugin is the waiter once cloud-pilot's take has answered: no wait needs to run. The note
     // asks for one when take is missing (an old cloud-pilot) or never answered.
-    if (timer && settings.wakeSession && interactive) await wake($, sid, Boolean(note) && takeWorks === null)
+    if (timer && settings.wakeSession && (await personHere($))) await wake($, sid, Boolean(note) && takeWorks === null)
     await update($, noWaiter, () => (settings.wakeSession && takeWorks ? '' : note))
     // The first of this band's repos whose last poll failed, said plainly (sign in, install gh, offline...).
     const failing = [...new Set(mine.filter(r => r.active).map(r => r.repo))].map(repo => file.errors?.[repo]).find(Boolean)
@@ -207,6 +207,23 @@ let pending: unknown[] = []
 let toldPending = false
 /** False for a session with no person at the prompt (claude -p, an SDK host): it is never woken. */
 let interactive = true
+/** CLAUDE_CODE_ENTRYPOINT at the session's start: `claude-desktop` in a session the desktop app hosts. */
+let entrypoint = ''
+
+/**
+ * Whether a person reads this session, so a wake reaches someone. The desktop app (and the IDE extensions) run Claude
+ * Code as an SDK host: `isInteractive` is false there, yet a person is at the app's prompt. Before 2.8.1 those sessions
+ * were never woken and a finished cloud session sat in the queue unread (owner 2026-11-27). A plain `claude -p` draws on
+ * no surface and is not the desktop app: still never woken.
+ */
+async function personHere($: EngineInterface): Promise<boolean> {
+  if (interactive || entrypoint === 'claude-desktop') return true
+  try {
+    return (await $.session.surfaces()).length > 0
+  } catch {
+    return false
+  }
+}
 
 /**
  * Hands Claude in this session the events cloud-pilot queued for it (sessions it started: a question, a PR, a merge,
@@ -520,6 +537,7 @@ export const register: Register = (on, options) => {
     try {
       previous = null // the first refresh below only seeds it: a reload never replays old events
       interactive = (e as { isInteractive?: boolean }).isInteractive !== false
+      entrypoint = clean(await $.env.get('CLAUDE_CODE_ENTRYPOINT'))
       takeWorks = null
       idleQueue = ''
       lastQuestions = null

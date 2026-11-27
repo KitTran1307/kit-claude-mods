@@ -1,5 +1,11 @@
 # Changelog
 
+## kit-cloud 2.8.1
+
+- **Sessions in the Claude desktop app now hear when their cloud sessions finish.** The desktop app runs Claude Code
+  as a non-interactive host, so kit-cloud never handed it the news (a merge, an opened PR, a question, silence) and it
+  waited in the queue. kit-cloud now wakes a session the desktop app or an IDE draws, and still never a plain `claude -p` run.
+
 ## kit-cloud-pilot 1.9.1, feedback forms
 
 - **Easier to report a problem, suggest an idea or ask a question:** a form for ideas next to the bug form (which now

@@ -24,7 +24,7 @@ const CLI = '/opt/kit-cloud-pilot/bin/cloud-pilot.mjs'
 
 const settle = () => new Promise(r => (globalThis as any).setTimeout(r, 30))
 
-function engine(on: On, over: { state?: () => string; origin?: string; nodeMissing?: boolean; hubOut?: (argv: string[]) => string; noPilot?: boolean; pilotLate?: boolean; language?: unknown; languageFails?: boolean; queue?: () => string; dropPrompt?: () => string | undefined } = {}): Engine {
+function engine(on: On, over: { state?: () => string; origin?: string; nodeMissing?: boolean; hubOut?: (argv: string[]) => string; noPilot?: boolean; pilotLate?: boolean; language?: unknown; languageFails?: boolean; queue?: () => string; dropPrompt?: () => string | undefined; env?: Record<string, string>; surfaces?: string[] } = {}): Engine {
   // The 30 s timer: each period resolves only when the test calls tick(), so refreshes happen when the test says.
   const periods: Array<() => void> = []
   const seen: Engine = {
@@ -56,7 +56,8 @@ function engine(on: On, over: { state?: () => string; origin?: string; nodeMissi
   on('session.id', () => ({ value: 'sess-1' }))
   on('clock.now', () => ({ value: NOW_MS }))
   on('clock.every', () => new Promise(resolve => periods.push(() => resolve({ value: undefined } as never))) as never)
-  on('env.get', (_, e) => ({ value: ({ CLAUDE_CONFIG_DIR: '/home/x/.claude-work', HOME: '/home/x' } as Record<string, string>)[e.name] }))
+  on('env.get', (_, e) => ({ value: ({ CLAUDE_CONFIG_DIR: '/home/x/.claude-work', HOME: '/home/x', ...over.env } as Record<string, string>)[e.name] }))
+  on('session.surfaces', () => ({ value: over.surfaces ?? [] }) as never)
   // cloud-pilot's data folder: its install.json (written by the kit-cloud-pilot plugin) and the hub's state.json.
   // pilotLate: kit-cloud-pilot loads after this plugin, so install.json appears once the first sleep has passed.
   let slept = false
@@ -521,6 +522,23 @@ test('wakeSession: a session with nobody at the prompt (claude -p) is never woke
   await seen.tick()
   expect(takes(seen)).toHaveLength(0)
   expect(seen.prompts).toEqual([])
+})
+
+// Owner 2026-11-27: the desktop app hosts Claude Code as an SDK (isInteractive false, no surface at start), so its
+// sessions were never told that their cloud sessions had finished.
+test('wakeSession: a session the desktop app hosts is woken though the engine calls it non-interactive', async ($, on) => {
+  const seen = engine(on, { env: { CLAUDE_CODE_ENTRYPOINT: 'claude-desktop' }, queue: () => JSON.stringify([MERGED]), hubOut: a => (a.includes('take') ? JSON.stringify({ status: 'events', count: 1, events: [MERGED] }) : '{"ok":true}') })
+  await $.session.start({ cwd: '/work/demo', surface: null, isInteractive: false } as never)
+  await seen.tick()
+  expect(takes(seen)).toHaveLength(1)
+  expect(seen.prompts).toHaveLength(1)
+})
+
+test('wakeSession: an SDK host that draws the session on a surface (an IDE, a phone) is woken', async ($, on) => {
+  const seen = engine(on, { surfaces: ['vscode'], queue: () => JSON.stringify([MERGED]), hubOut: a => (a.includes('take') ? JSON.stringify({ status: 'events', count: 1, events: [MERGED] }) : '{"ok":true}') })
+  await $.session.start({ cwd: '/work/demo', surface: null, isInteractive: false } as never)
+  await seen.tick()
+  expect(seen.prompts).toHaveLength(1)
 })
 
 test('an account set aside by cloud-pilot (its sessions cannot push) shows on the band and in /cloud, for this account only', async ($, on) => {
